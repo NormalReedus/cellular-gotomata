@@ -9,65 +9,77 @@ import (
 	"github.com/icza/gox/imagex/colorx"
 )
 
-//TODO: Don't embed Dot in DotNode, rather embed DotNode and DotCell inside Dot
-// DotNode should have a parentList etc and all the other methods / fields for interacting with the LinkedDotList
-// DotNode should have a parentGrid etc and all the other methods / field for interacting with the DotGrid
-// Then DotGrid and LinkedDotList should use interfaces instead of *DotNode or *Dot etc
-// Maybe the interfaces can be so generic, that we can rename the grid and ll to just Grid and LinkedList
+//* -------------------------
+//* GRID
+//* -------------------------
 
-type DotGrid struct {
+type Grid struct {
 	grid [screenWidth][screenHeight]*Dot
 }
 
-func NewDotGrid() *DotGrid {
-	return &DotGrid{}
+func NewGrid() *Grid {
+	return &Grid{}
 }
 
-func (dg *DotGrid) Get(x, y int) *Dot {
+func (dg *Grid) Get(x, y int) *Dot {
 	return dg.grid[x][y]
 }
 
-func (dg *DotGrid) Set(x, y int, dot *Dot) {
+func (dg *Grid) Set(x, y int, dot *Dot) {
 	dg.grid[x][y] = dot
 }
 
-type LinkedDotList struct {
-	head   *DotNode
-	tail   *DotNode
+//* -------------------------
+//* LINKED LIST
+//* -------------------------
+
+type LinkedList struct {
+	head   NodeManipulator
+	tail   NodeManipulator
 	length int
 }
 
-func NewLinkedDotList(dots ...*Dot) *LinkedDotList {
-	ll := &LinkedDotList{}
+func NewLinkedList(nodes ...NodeManipulator) *LinkedList {
+	ll := &LinkedList{}
 
-	for _, dot := range dots {
-		ll.Add(dot)
+	for _, node := range nodes {
+		ll.Add(node)
 	}
 
 	return ll
 }
 
-func (ll LinkedDotList) String() string {
+func (ll LinkedList) String() string {
 	if ll.head != nil && ll.tail != nil {
-		return fmt.Sprintf("LinkedDotList{ length: %d, head: %v, tail: %v }", ll.length, ll.head.Dot.String(), ll.tail.Dot.String())
+		return fmt.Sprintf("LinkedList{ length: %d, head: %v, tail: %v }", ll.length, ll.head, ll.tail)
 	}
 
-	return "LinkedDotList{ empty }"
+	return "LinkedList{ empty }"
 }
 
-func (ll *LinkedDotList) Head() *DotNode {
+func (ll *LinkedList) Head() NodeManipulator {
 	return ll.head
 }
-func (ll *LinkedDotList) Tail() *DotNode {
+
+func (ll *LinkedList) SetHead(node NodeManipulator) NodeManipulator {
+	ll.head = node
+	return node
+}
+
+func (ll *LinkedList) Tail() NodeManipulator {
 	return ll.tail
 }
-func (ll *LinkedDotList) Length() int {
+
+func (ll *LinkedList) SetTail(node NodeManipulator) NodeManipulator {
+	ll.tail = node
+	return node
+}
+
+func (ll *LinkedList) Length() int {
 	return ll.length
 }
 
-func (ll *LinkedDotList) Add(dot *Dot) *DotNode {
-	node := NewDotNode(dot, ll)
-
+func (ll *LinkedList) Add(node NodeManipulator) NodeManipulator {
 	if ll.head == nil {
 		ll.head = node
 		ll.tail = node
@@ -77,36 +89,35 @@ func (ll *LinkedDotList) Add(dot *Dot) *DotNode {
 		return node
 	}
 
-	node.prev = ll.tail
-	ll.tail.next = node
+	node.SetPrevNode(ll.tail)
+	ll.tail.SetNextNode(node)
 	ll.tail = node
 	ll.incrementLength()
 
 	return node
 }
 
-func (ll *LinkedDotList) incrementLength() {
+func (ll *LinkedList) incrementLength() {
 	ll.length++
 }
 
-func (ll *LinkedDotList) decrementLength() {
+func (ll *LinkedList) decrementLength() {
 	ll.length--
 }
 
-// Loops through DotNodes, not Dots
-// To access Dots you must use DotNode.data
-func (ll LinkedDotList) ForEach(callback func(*DotNode), reverse bool) {
+func (ll LinkedList) ForEach(callback func(node NodeManipulator), reverse bool) {
 	if reverse {
 		node := ll.tail
 
 		for {
 			callback(node)
 
-			if node.prev == nil {
+			// if node.prev == nil {
+			if node.PrevNode() == nil {
 				break
 			}
 
-			node = node.prev
+			node = node.PrevNode()
 		}
 
 	} else {
@@ -115,102 +126,135 @@ func (ll LinkedDotList) ForEach(callback func(*DotNode), reverse bool) {
 		for {
 			callback(node)
 
-			if node.next == nil {
+			if node.NextNode() == nil {
 				break
 			}
 
-			node = node.next
+			node = node.NextNode()
 		}
 
 	}
 }
 
-type DotNode struct {
-	list *LinkedDotList
-	*Dot // .Dot seemed excessively dotty to call all the time
-	next *DotNode
-	prev *DotNode
+//* -------------------------
+//* NODE
+//* -------------------------
+
+type NodeManipulator interface {
+	SetParentList(list *LinkedList) *LinkedList
+	PrevNode() NodeManipulator
+	SetPrevNode(NodeManipulator) NodeManipulator
+	NextNode() NodeManipulator
+	SetNextNode(NodeManipulator) NodeManipulator
+	RemoveNode() NodeManipulator
 }
 
-func NewDotNode(dot *Dot, list *LinkedDotList) *DotNode {
-	return &DotNode{Dot: dot, list: list} // next and prev are set in LinkedDotList
+// Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
+// This makes any embedding struct implement the NodeManipulator
+type Node struct {
+	parentList *LinkedList
+	prev       NodeManipulator
+	next       NodeManipulator
 }
 
-func (dn DotNode) String() string {
-	var prev, next string
+// func NewNode(list *LinkedList) *Node {
+// 	return &Node{list: list} // next and prev are set by LinkedList
+// }
 
-	if dn.prev != nil {
-		prev = dn.prev.Dot.String()
-	}
-	if dn.next != nil {
-		next = dn.next.Dot.String()
-	}
+// func (n Node) String() string {
+// 	var prev, next string
 
-	if prev == "" {
-		prev = "<nil>"
-	}
-	if next == "" {
-		next = "<nil>"
-	}
+// 	if n.prev != nil {
+// 		prev = n.prev.String()
+// 	}
+// 	if n.next != nil {
+// 		next = n.next.String()
+// 	}
 
-	return fmt.Sprintf("DotNode{ data: %v, prev: %v, next: %v }", dn.Dot.String(), prev, next)
+// 	if prev == "" {
+// 		prev = "<nil>"
+// 	}
+// 	if next == "" {
+// 		next = "<nil>"
+// 	}
+
+// 	return fmt.Sprintf("DotNode{ data: %v, prev: %v, next: %v }", n.String(), prev, next)
+// }
+
+func (n *Node) SetParentList(list *LinkedList) *LinkedList {
+	n.parentList = list
+	return list
 }
 
-func (dn *DotNode) Prev() *DotNode {
-	return dn.prev
+func (n *Node) PrevNode() NodeManipulator {
+	return n.prev
 }
 
-func (dn *DotNode) Next() *DotNode {
-	return dn.next
+func (n *Node) SetPrevNode(node NodeManipulator) NodeManipulator {
+	n.prev = node
+	return node
 }
 
-func (dn *DotNode) Remove() *DotNode {
+func (n *Node) NextNode() NodeManipulator {
+	return n.next
+}
+
+func (n *Node) SetNextNode(node NodeManipulator) NodeManipulator {
+	n.next = node
+	return node
+}
+
+func (n *Node) RemoveNode() NodeManipulator {
 	// There are always 2 refs to delete to garbage collect this node...
-	if dn.prev == nil {
+	if n.PrevNode() == nil {
 		//* If this node is head AND tail
-		if dn.next == nil {
+		if n.next == nil {
 			// Both refs are from list (head, tail), since there are no other nodes
-			dn.list.tail = nil
-			dn.list.head = nil
+			n.parentList.SetTail(nil)
+			n.parentList.SetHead(nil)
 
-			dn.list.decrementLength()
-			return dn
+			n.parentList.decrementLength()
+			return n
 		}
 
 		//* If this node is ONLY head
 		// One ref from list (head) and one ref from next node (prev)
-		dn.list.head = dn.next
-		dn.next.prev = nil
+		n.parentList.SetHead(n.next)
+		n.next.SetPrevNode(nil)
 
-		dn.list.decrementLength()
-		return dn
+		n.parentList.decrementLength()
+		return n
 	}
 
 	//* If this node is ONLY tail
-	if dn.next == nil {
+	if n.next == nil {
 		// One ref from list (tail) and one ref from prev node (next)
-		dn.list.tail = dn.prev
-		dn.prev.next = nil
+		n.parentList.SetTail(n.prev)
+		n.prev.SetNextNode(nil)
 
-		dn.list.decrementLength()
-		return dn
+		n.parentList.decrementLength()
+		return n
 	}
 
 	//* If this node is NEITHER head nor tail
 	// One ref from both prev (next) and next (prev)
-	dn.prev.next = dn.next
-	dn.next.prev = dn.prev
+	n.prev.SetNextNode(n.next)
+	n.next.SetPrevNode(n.prev)
 
-	dn.list.decrementLength()
-	return dn
+	n.parentList.decrementLength()
+	return n
 }
 
-// Use NewDot constructor instead
+//* -------------------------
+//* DOT
+//* -------------------------
+
 type Dot struct {
 	image        *ebiten.Image
 	fill         color.Color
 	Position     Point
 	screenBounds Point
+	Node
 }
 
 func NewDot(startX, startY float64, screenWidth, screenHeight int) *Dot {
@@ -230,7 +274,7 @@ func NewDot(startX, startY float64, screenWidth, screenHeight int) *Dot {
 
 // Pretty print the Dot position x & y coordinates
 func (d Dot) String() string {
-	return fmt.Sprintf("Dot{ x: %d, y: %d }", int(d.Position.X), int(d.Position.Y))
+	return fmt.Sprintf("Dot{ x: %d, y: %d, prev: %v, next: %v }", int(d.Position.X), int(d.Position.Y), d.prev, d.next)
 }
 
 func (d *Dot) Draw(screen *ebiten.Image) {
@@ -240,6 +284,10 @@ func (d *Dot) Draw(screen *ebiten.Image) {
 	screen.DrawImage(d.image, dotOpts)
 }
 
+//* -------------------------
+//* POINT
+//* -------------------------
+// Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
 type Point struct {
 	X, Y float64
 }

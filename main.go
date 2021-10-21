@@ -12,6 +12,10 @@ import (
 	"github.com/icza/gox/imagex/colorx"
 )
 
+//TODO: LOG OUT DOTS, LINKEDLIST to see if they print as they are instructed and all fields work and test that everything is being passed as pointer / value correctly when specifying interfaces
+//TODO: continue with Grid and Cell the same as with LinkedList and Node, embedding Cell into Dot to implement the CellManipulator interface that together with Cell have the fields and methods to interact with the Grid
+//TODO: grid should then use CellManipulator for everything, since Dot should implement CellManipulator. Grid should just be another way to reference Dots with O(1) lookups
+
 type Game struct{}
 
 const (
@@ -24,18 +28,18 @@ const (
 var (
 	gameFrameCount = 0
 	bgColor, _     = colorx.ParseHexColor("#343a40")
-	dots           *LinkedDotList
+	dots           *LinkedList
 )
 
 func init() {
-	var dotSlice []*Dot
+	var dotSlice []NodeManipulator
 
 	for i := 0; i < numDots; i++ {
 		dot := NewDot(screenWidth-1, screenHeight-1, screenWidth, screenHeight)
 		dotSlice = append(dotSlice, dot)
 	}
 
-	dots = NewLinkedDotList(dotSlice...)
+	dots = NewLinkedList(dotSlice...)
 
 	debugInit()
 }
@@ -92,25 +96,31 @@ func main() {
 }
 
 func drawDots(screen *ebiten.Image) {
-	dots.ForEach(func(dotNode *DotNode) {
-		dotNode.Draw(screen)
+	dots.ForEach(func(nm NodeManipulator) {
+		// Assert that dotnode is a *Dot, so we can use *Dot's methods
+		dot := nm.(*Dot)
+		dot.Draw(screen)
 	}, false)
 }
 
 func wanderDots() {
-	dots.ForEach(func(dotNode *DotNode) {
+	dots.ForEach(func(nm NodeManipulator) {
+		// Assert that dotnode is a *Dot, so we can use *Dot's methods
+		dot := nm.(*Dot)
 		// must be -1 to not go outside window
 		x := float64(rand.Intn(screenWidth - 1))
 		y := float64(rand.Intn(screenHeight - 1))
 
-		dotNode.Position.Set(x, y)
+		dot.Position.Set(x, y)
 	}, false)
 }
 
 func debugInit() {
 }
+
 func debugUpdate() {
 
 }
+
 func debugDraw() {
 }
