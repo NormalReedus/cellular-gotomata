@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
 	"log"
+	"math/rand"
 	"reflect"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -14,11 +16,6 @@ import (
 //* GRID
 //* -------------------------
 
-//TODO: continue with Grid and Cell the same as with LinkedList and Node, embedding Cell into Dot to implement the CellManipulator interface that together with Cell have the fields and methods to interact with the Grid
-//TODO: grid should then use CellManipulator for everything, since Dot should implement CellManipulator. Grid should just be another way to reference Dots with O(1) lookups
-//TODO: there should be something that adds a dot to both grid and ll at the same time (a method on Game?). It should take coords, create the Dot, call ll.Add and grid.Set with the coords
-//TODO: maybe coords should be on Cell instead of Dot, see if there is a way to keep it the coords accessible through Position. This could be done by setting Position on Cell and embedding Cell on Dot
-
 type Grid struct {
 	grid [screenWidth][screenHeight]CellManipulator
 }
@@ -27,45 +24,78 @@ func NewGrid() *Grid {
 	return &Grid{}
 }
 
-func (dg *Grid) Get(x, y int) CellManipulator {
-	return dg.grid[x][y]
+func (g *Grid) Bounds() (int, int) {
+	return len(g.grid), len(g.grid[0])
 }
 
-func (dg *Grid) Set(x, y int, cell CellManipulator) {
-	dg.grid[x][y] = cell
+func (g *Grid) Get(coords Point) CellManipulator {
+	return g.grid[coords.X][coords.Y]
 }
 
-func (dg *Grid) Remove(x, y int) {
-	dg.grid[x][y] = nil
+func (g *Grid) Move(currentCoords Point, newCoords Point, cell CellManipulator) {
+	g.Remove(currentCoords)
+	g.Set(newCoords, cell)
+	cell.Position().SetCoords(newCoords.X, newCoords.Y)
+}
+func (g *Grid) Set(coords Point, cell CellManipulator) {
+	g.grid[coords.X][coords.Y] = cell
+
+	cell.SetParentGrid(g)
+}
+
+func (g *Grid) Remove(coords Point) {
+	g.grid[coords.X][coords.Y] = nil
+}
+
+func (g *Grid) RandomOpenCell() (*Point, error) {
+	var openCells []Point
+
+	for x, column := range g.grid {
+		for y := range column {
+			if g.grid[x][y] == nil {
+				p := Point{X: x, Y: y}
+				openCells = append(openCells, p)
+			}
+		}
+	}
+
+	if len(openCells) == 0 {
+		return nil, errors.New("there are no more open cells")
+	}
+
+	randCellNum := rand.Intn(len(openCells))
+
+	return &openCells[randCellNum], nil
 }
 
 // Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
 // This makes any embedding struct implement the CellManipulator
 type CellManipulator interface {
 	SetParentGrid(grid *Grid)
-	// PrevNode() NodeManipulator
-	// SetPrevNode(NodeManipulator) NodeManipulator
-	// NextNode() NodeManipulator
-	// SetNextNode(NodeManipulator) NodeManipulator
+	MoveCell(coords Point)
 	RemoveCell()
 	Position() *Point
 }
 
 type Cell struct {
 	parentGrid *Grid
-	position   *Point
+	position   Point
 }
 
 func (c *Cell) SetParentGrid(grid *Grid) {
 	c.parentGrid = grid
 }
 
+func (c *Cell) MoveCell(coords Point) {
+	c.parentGrid.Move(c.position, coords, c)
+}
+
 func (c *Cell) RemoveCell() {
-	c.parentGrid.Remove(c.Position().X, c.Position().Y)
+	c.parentGrid.Remove(c.position)
 }
 
 func (c *Cell) Position() *Point {
-	return c.position
+	return &c.position
 }
 
 //* -------------------------
@@ -78,12 +108,13 @@ type LinkedList struct {
 	length int
 }
 
-func NewLinkedList(nodes ...NodeManipulator) *LinkedList {
+// func NewLinkedList(nodes ...NodeManipulator) *LinkedList {
+func NewLinkedList() *LinkedList {
 	ll := &LinkedList{}
 
-	for _, node := range nodes {
-		ll.Add(node)
-	}
+	// for _, node := range nodes {
+	// 	ll.Add(node)
+	// }
 
 	return ll
 }
@@ -132,6 +163,8 @@ func (ll *LinkedList) Add(node NodeManipulator) NodeManipulator {
 	ll.tail.SetNextNode(node)
 	ll.tail = node
 	ll.incrementLength()
+
+	node.SetParentList(ll)
 
 	return node
 }
@@ -217,36 +250,49 @@ func (n *Node) SetNextNode(node NodeManipulator) {
 }
 
 func (n *Node) RemoveNode() {
+	//TODO: this errors when right clicking to delete nodes
 	// There are always 2 refs to delete to garbage collect this node...
-	if n.PrevNode() == nil {
+	if n.prev == nil {
 		//* If this node is head AND tail
 		if n.next == nil {
+			fmt.Println("NODE")
+			fmt.Println(n)
 			// Both refs are from list (head, tail), since there are no other nodes
 			n.parentList.SetTail(nil)
 			n.parentList.SetHead(nil)
 
 			n.parentList.decrementLength()
+			return
 		}
 
+		fmt.Println("NODE")
+		fmt.Println(n)
 		//* If this node is ONLY head
 		// One ref from list (head) and one ref from next node (prev)
 		n.parentList.SetHead(n.next)
 		n.next.SetPrevNode(nil)
 
 		n.parentList.decrementLength()
+		return
 	}
 
 	//* If this node is ONLY tail
 	if n.next == nil {
+		fmt.Println("NODE")
+		fmt.Println(n)
 		// One ref from list (tail) and one ref from prev node (next)
 		n.parentList.SetTail(n.prev)
 		n.prev.SetNextNode(nil)
 
 		n.parentList.decrementLength()
+		return
 	}
 
 	//* If this node is NEITHER head nor tail
 	// One ref from both prev (next) and next (prev)
+	fmt.Println("NODE")
+	fmt.Println(n)
+
 	n.prev.SetNextNode(n.next)
 	n.next.SetPrevNode(n.prev)
 
@@ -258,26 +304,29 @@ func (n *Node) RemoveNode() {
 //* -------------------------
 
 type Dot struct {
-	image        *ebiten.Image
-	fill         color.Color
-	screenBounds Point
+	image *ebiten.Image
+	fill  color.Color
 	Node
 	Cell
 }
 
-func NewDot(startX, startY int, screenWidth, screenHeight int) *Dot {
+func NewDot(coords Point, parentList *LinkedList, parentGrid *Grid) *Dot {
 	image := ebiten.NewImage(1, 1)
 	color, err := colorx.ParseHexColor("#adb5bd")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return &Dot{
-		image:        image,
-		Cell:         Cell{position: &Point{startX, startY}},
-		fill:         color,
-		screenBounds: Point{screenWidth, screenHeight}, // TODO: Maybe not float64 for when we do comparisons later? I.e. don't use Point
+	dot := &Dot{
+		image: image,
+		Cell:  Cell{position: coords},
+		fill:  color,
 	}
+
+	parentList.Add(dot)
+	parentGrid.Set(coords, dot)
+
+	return dot
 }
 
 // Pretty print the Dot position x & y coordinates
@@ -313,13 +362,13 @@ type Point struct {
 }
 
 func (p Point) String() string {
-	return fmt.Sprintf("{ x: %d, y: %d }", int(p.X), int(p.Y))
+	return fmt.Sprintf("{ x: %d, y: %d }", p.X, p.Y)
 }
 
-func (p *Point) Set(x, y int) {
+func (p *Point) SetCoords(x, y int) {
 	p.X = x
 	p.Y = y
 }
-func (p *Point) Get() (int, int) {
+func (p *Point) GetCoords() (int, int) {
 	return p.X, p.Y
 }

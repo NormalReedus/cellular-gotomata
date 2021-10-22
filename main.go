@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/icza/gox/imagex/colorx"
 )
 
-type Game struct{}
-
+//TODO: there should be something that adds a dot to both grid and ll at the same time (a method on Game? Game would then also have a prop for grid and ll that is THE structures to add to). It should take coords, create the Dot, call ll.Add and grid.Set with the coords
+//TODO: add struct / interfaces for rules of the game. There should be different structs that implement the same interface, that specify the rules for every tick. This should be embedded in Dot and Grid and LL etc.
+// There could for example be a Move() in the interface, and depending on the struct, the Move() function behaves differently, e.g. by moving a specific number of steps specified by a struct field or whether it should die when something specific happens etc.
 const (
 	screenWidth, screenHeight = 30, 30
 	numDots                   = 10
@@ -24,20 +24,41 @@ const (
 var (
 	gameFrameCount = 0
 	bgColor, _     = colorx.ParseHexColor("#343a40")
-	dots           *LinkedList
+	game           *Game
 )
 
 func init() {
-	var dotSlice []NodeManipulator
-
-	for i := 0; i < numDots; i++ {
-		dot := NewDot(screenWidth-1, screenHeight-1, screenWidth, screenHeight)
-		dotSlice = append(dotSlice, dot)
-	}
-
-	dots = NewLinkedList(dotSlice...)
+	rand.Seed(time.Now().UnixNano())
+	ebiten.SetWindowSize(screenWidth*30, screenHeight*30)
+	ebiten.SetWindowTitle("Cellular Automata")
 
 	debugInit()
+}
+
+func setupInitialState() {
+	game = &Game{dotList: NewLinkedList(), dotGrid: NewGrid()}
+
+	for i := 0; i < numDots; i++ {
+		coords, err := game.dotGrid.RandomOpenCell()
+		if err != nil {
+			log.Fatal("you have added too many dots for this grid")
+		}
+
+		NewDot(*coords, game.dotList, game.dotGrid)
+	}
+}
+
+func main() {
+	setupInitialState()
+
+	if err := ebiten.RunGame(game); err != nil {
+		log.Fatal(err)
+	}
+}
+
+type Game struct {
+	dotList *LinkedList
+	dotGrid *Grid
 }
 
 func (g *Game) Update() error {
@@ -55,14 +76,35 @@ func (g *Game) Update() error {
 
 // Default TPS
 func inputUpdate() {
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		fmt.Println(ebiten.CursorPosition())
+	//TODO: make these handlers into functions
+	coords := leftClick()
+	if coords != nil {
+		NewDot(*coords, game.dotList, game.dotGrid)
+
+		fmt.Println("List:")
+		fmt.Println(game.dotList)
+		// fmt.Println("Grid:")
+		// fmt.Println(game.dotGrid)
+	}
+	coords = rightClick()
+	if coords != nil {
+		dot := game.dotGrid.Get(*coords).(*Dot)
+		if dot == nil {
+			return
+		}
+
+		dot.Remove()
+
+		// fmt.Println("List:")
+		// fmt.Println(game.dotList)
+		// fmt.Println("Grid:")
+		// fmt.Println(game.dotGrid)
 	}
 }
 
 // Slower TPS
 func gameUpdate() {
-	wanderDots()
+	// wanderDots()
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -78,21 +120,8 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
 }
 
-func main() {
-	rand.Seed(time.Now().UnixNano())
-
-	game := &Game{}
-
-	ebiten.SetWindowSize(screenWidth*30, screenHeight*30)
-	ebiten.SetWindowTitle("Cellular Automata")
-
-	if err := ebiten.RunGame(game); err != nil {
-		log.Fatal(err)
-	}
-}
-
 func drawDots(screen *ebiten.Image) {
-	dots.ForEach(func(nm NodeManipulator) {
+	game.dotList.ForEach(func(nm NodeManipulator) {
 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
 		dot := nm.(*Dot)
 		dot.Draw(screen)
@@ -100,14 +129,12 @@ func drawDots(screen *ebiten.Image) {
 }
 
 func wanderDots() {
-	dots.ForEach(func(nm NodeManipulator) {
+	game.dotList.ForEach(func(nm NodeManipulator) {
 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
 		dot := nm.(*Dot)
-		// must be -1 to not go outside window
-		x := rand.Intn(screenWidth - 1)
-		y := rand.Intn(screenHeight - 1)
+		newCoords, _ := game.dotGrid.RandomOpenCell()
+		dot.MoveCell(*newCoords)
 
-		dot.Position().Set(x, y)
 	}, false)
 }
 
