@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"reflect"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/icza/gox/imagex/colorx"
@@ -13,20 +14,58 @@ import (
 //* GRID
 //* -------------------------
 
+//TODO: continue with Grid and Cell the same as with LinkedList and Node, embedding Cell into Dot to implement the CellManipulator interface that together with Cell have the fields and methods to interact with the Grid
+//TODO: grid should then use CellManipulator for everything, since Dot should implement CellManipulator. Grid should just be another way to reference Dots with O(1) lookups
+//TODO: there should be something that adds a dot to both grid and ll at the same time (a method on Game?). It should take coords, create the Dot, call ll.Add and grid.Set with the coords
+//TODO: maybe coords should be on Cell instead of Dot, see if there is a way to keep it the coords accessible through Position. This could be done by setting Position on Cell and embedding Cell on Dot
+
 type Grid struct {
-	grid [screenWidth][screenHeight]*Dot
+	grid [screenWidth][screenHeight]CellManipulator
 }
 
 func NewGrid() *Grid {
 	return &Grid{}
 }
 
-func (dg *Grid) Get(x, y int) *Dot {
+func (dg *Grid) Get(x, y int) CellManipulator {
 	return dg.grid[x][y]
 }
 
-func (dg *Grid) Set(x, y int, dot *Dot) {
-	dg.grid[x][y] = dot
+func (dg *Grid) Set(x, y int, cell CellManipulator) {
+	dg.grid[x][y] = cell
+}
+
+func (dg *Grid) Remove(x, y int) {
+	dg.grid[x][y] = nil
+}
+
+// Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
+// This makes any embedding struct implement the CellManipulator
+type CellManipulator interface {
+	SetParentGrid(grid *Grid)
+	// PrevNode() NodeManipulator
+	// SetPrevNode(NodeManipulator) NodeManipulator
+	// NextNode() NodeManipulator
+	// SetNextNode(NodeManipulator) NodeManipulator
+	RemoveCell()
+	Position() *Point
+}
+
+type Cell struct {
+	parentGrid *Grid
+	position   *Point
+}
+
+func (c *Cell) SetParentGrid(grid *Grid) {
+	c.parentGrid = grid
+}
+
+func (c *Cell) RemoveCell() {
+	c.parentGrid.Remove(c.Position().X, c.Position().Y)
+}
+
+func (c *Cell) Position() *Point {
+	return c.position
 }
 
 //* -------------------------
@@ -51,7 +90,7 @@ func NewLinkedList(nodes ...NodeManipulator) *LinkedList {
 
 func (ll LinkedList) String() string {
 	if ll.head != nil && ll.tail != nil {
-		return fmt.Sprintf("LinkedList{ length: %d, head: %v, tail: %v }", ll.length, ll.head, ll.tail)
+		return fmt.Sprintf("LinkedList{ nodeType: %s, length: %d, head: %v, tail: %v }", reflect.TypeOf(ll.head), ll.length, ll.head, ll.tail)
 	}
 
 	return "LinkedList{ empty }"
@@ -141,12 +180,12 @@ func (ll LinkedList) ForEach(callback func(node NodeManipulator), reverse bool) 
 //* -------------------------
 
 type NodeManipulator interface {
-	SetParentList(list *LinkedList) *LinkedList
+	SetParentList(list *LinkedList)
 	PrevNode() NodeManipulator
-	SetPrevNode(NodeManipulator) NodeManipulator
+	SetPrevNode(NodeManipulator)
 	NextNode() NodeManipulator
-	SetNextNode(NodeManipulator) NodeManipulator
-	RemoveNode() NodeManipulator
+	SetNextNode(NodeManipulator)
+	RemoveNode()
 }
 
 // Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
@@ -157,54 +196,27 @@ type Node struct {
 	next       NodeManipulator
 }
 
-// func NewNode(list *LinkedList) *Node {
-// 	return &Node{list: list} // next and prev are set by LinkedList
-// }
-
-// func (n Node) String() string {
-// 	var prev, next string
-
-// 	if n.prev != nil {
-// 		prev = n.prev.String()
-// 	}
-// 	if n.next != nil {
-// 		next = n.next.String()
-// 	}
-
-// 	if prev == "" {
-// 		prev = "<nil>"
-// 	}
-// 	if next == "" {
-// 		next = "<nil>"
-// 	}
-
-// 	return fmt.Sprintf("DotNode{ data: %v, prev: %v, next: %v }", n.String(), prev, next)
-// }
-
-func (n *Node) SetParentList(list *LinkedList) *LinkedList {
+func (n *Node) SetParentList(list *LinkedList) {
 	n.parentList = list
-	return list
 }
 
 func (n *Node) PrevNode() NodeManipulator {
 	return n.prev
 }
 
-func (n *Node) SetPrevNode(node NodeManipulator) NodeManipulator {
+func (n *Node) SetPrevNode(node NodeManipulator) {
 	n.prev = node
-	return node
 }
 
 func (n *Node) NextNode() NodeManipulator {
 	return n.next
 }
 
-func (n *Node) SetNextNode(node NodeManipulator) NodeManipulator {
+func (n *Node) SetNextNode(node NodeManipulator) {
 	n.next = node
-	return node
 }
 
-func (n *Node) RemoveNode() NodeManipulator {
+func (n *Node) RemoveNode() {
 	// There are always 2 refs to delete to garbage collect this node...
 	if n.PrevNode() == nil {
 		//* If this node is head AND tail
@@ -214,7 +226,6 @@ func (n *Node) RemoveNode() NodeManipulator {
 			n.parentList.SetHead(nil)
 
 			n.parentList.decrementLength()
-			return n
 		}
 
 		//* If this node is ONLY head
@@ -223,7 +234,6 @@ func (n *Node) RemoveNode() NodeManipulator {
 		n.next.SetPrevNode(nil)
 
 		n.parentList.decrementLength()
-		return n
 	}
 
 	//* If this node is ONLY tail
@@ -233,7 +243,6 @@ func (n *Node) RemoveNode() NodeManipulator {
 		n.prev.SetNextNode(nil)
 
 		n.parentList.decrementLength()
-		return n
 	}
 
 	//* If this node is NEITHER head nor tail
@@ -242,7 +251,6 @@ func (n *Node) RemoveNode() NodeManipulator {
 	n.next.SetPrevNode(n.prev)
 
 	n.parentList.decrementLength()
-	return n
 }
 
 //* -------------------------
@@ -252,12 +260,12 @@ func (n *Node) RemoveNode() NodeManipulator {
 type Dot struct {
 	image        *ebiten.Image
 	fill         color.Color
-	Position     Point
 	screenBounds Point
 	Node
+	Cell
 }
 
-func NewDot(startX, startY float64, screenWidth, screenHeight int) *Dot {
+func NewDot(startX, startY int, screenWidth, screenHeight int) *Dot {
 	image := ebiten.NewImage(1, 1)
 	color, err := colorx.ParseHexColor("#adb5bd")
 	if err != nil {
@@ -266,21 +274,33 @@ func NewDot(startX, startY float64, screenWidth, screenHeight int) *Dot {
 
 	return &Dot{
 		image:        image,
-		Position:     Point{startX, startY},
+		Cell:         Cell{position: &Point{startX, startY}},
 		fill:         color,
-		screenBounds: Point{float64(screenWidth), float64(screenHeight)}, // TODO: Maybe not float64 for when we do comparisons later? I.e. don't use Point
+		screenBounds: Point{screenWidth, screenHeight}, // TODO: Maybe not float64 for when we do comparisons later? I.e. don't use Point
 	}
 }
 
 // Pretty print the Dot position x & y coordinates
 func (d Dot) String() string {
-	return fmt.Sprintf("Dot{ x: %d, y: %d, prev: %v, next: %v }", int(d.Position.X), int(d.Position.Y), d.prev, d.next)
+	var prevPos, nextPos *Point
+	if d.prev != nil {
+		prevPos = d.prev.(*Dot).Position()
+	}
+	if d.next != nil {
+		nextPos = d.next.(*Dot).Position()
+	}
+	return fmt.Sprintf("Dot{ x: %d, y: %d, prev: %v, next: %v }", d.Position().X, d.Position().Y, prevPos, nextPos)
+}
+
+func (d *Dot) Remove() {
+	d.RemoveNode()
+	d.RemoveCell()
 }
 
 func (d *Dot) Draw(screen *ebiten.Image) {
 	dotOpts := &ebiten.DrawImageOptions{}
-	dotOpts.GeoM.Translate(d.Position.X, d.Position.Y) // position
-	d.image.Fill(d.fill)                               // color
+	dotOpts.GeoM.Translate(float64(d.Position().X), float64(d.Position().Y)) // position
+	d.image.Fill(d.fill)                                                     // color
 	screen.DrawImage(d.image, dotOpts)
 }
 
@@ -289,13 +309,17 @@ func (d *Dot) Draw(screen *ebiten.Image) {
 //* -------------------------
 // Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
 type Point struct {
-	X, Y float64
+	X, Y int
 }
 
-func (p *Point) Set(x, y float64) {
+func (p Point) String() string {
+	return fmt.Sprintf("{ x: %d, y: %d }", int(p.X), int(p.Y))
+}
+
+func (p *Point) Set(x, y int) {
 	p.X = x
 	p.Y = y
 }
-func (p *Point) Get() (float64, float64) {
+func (p *Point) Get() (int, int) {
 	return p.X, p.Y
 }

@@ -1,0 +1,2 @@
+# github.com/NormalReedus/cellular-gotomata
+.\main.go:110:15: dot.Cell.Position.Set undefined (type func() *Point has no field or method Set)

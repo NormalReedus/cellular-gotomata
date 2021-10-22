@@ -12,10 +12,6 @@ import (
 	"github.com/icza/gox/imagex/colorx"
 )
 
-//TODO: LOG OUT DOTS, LINKEDLIST to see if they print as they are instructed and all fields work and test that everything is being passed as pointer / value correctly when specifying interfaces
-//TODO: continue with Grid and Cell the same as with LinkedList and Node, embedding Cell into Dot to implement the CellManipulator interface that together with Cell have the fields and methods to interact with the Grid
-//TODO: grid should then use CellManipulator for everything, since Dot should implement CellManipulator. Grid should just be another way to reference Dots with O(1) lookups
-
 type Game struct{}
 
 const (
@@ -108,10 +104,10 @@ func wanderDots() {
 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
 		dot := nm.(*Dot)
 		// must be -1 to not go outside window
-		x := float64(rand.Intn(screenWidth - 1))
-		y := float64(rand.Intn(screenHeight - 1))
+		x := rand.Intn(screenWidth - 1)
+		y := rand.Intn(screenHeight - 1)
 
-		dot.Position.Set(x, y)
+		dot.Position().Set(x, y)
 	}, false)
 }
 
