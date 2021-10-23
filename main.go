@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	_ "image/png" // necessary for loading images
 	"log"
 	"math/rand"
@@ -16,7 +15,7 @@ import (
 // There could for example be a Move() in the interface, and depending on the struct, the Move() function behaves differently, e.g. by moving a specific number of steps specified by a struct field or whether it should die when something specific happens etc.
 const (
 	screenWidth, screenHeight = 30, 30
-	numDots                   = 10
+	numDots                   = 3
 	// Update is still ~60 (default) TPS to listen better for mouse events, this just applies to game logic
 	gameUpdateOnFrame = 20
 )
@@ -81,24 +80,16 @@ func inputUpdate() {
 	if coords != nil {
 		NewDot(*coords, game.dotList, game.dotGrid)
 
-		fmt.Println("List:")
-		fmt.Println(game.dotList)
-		// fmt.Println("Grid:")
-		// fmt.Println(game.dotGrid)
 	}
 	coords = rightClick()
 	if coords != nil {
-		dot := game.dotGrid.Get(*coords).(*Dot)
-		if dot == nil {
+		node := game.dotGrid.Get(*coords)
+		if node == nil {
 			return
 		}
+		dot := node.(*Dot)
 
 		dot.Remove()
-
-		// fmt.Println("List:")
-		// fmt.Println(game.dotList)
-		// fmt.Println("Grid:")
-		// fmt.Println(game.dotGrid)
 	}
 }
 

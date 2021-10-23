@@ -112,10 +112,6 @@ type LinkedList struct {
 func NewLinkedList() *LinkedList {
 	ll := &LinkedList{}
 
-	// for _, node := range nodes {
-	// 	ll.Add(node)
-	// }
-
 	return ll
 }
 
@@ -131,42 +127,41 @@ func (ll *LinkedList) Head() NodeManipulator {
 	return ll.head
 }
 
-func (ll *LinkedList) SetHead(node NodeManipulator) NodeManipulator {
+func (ll *LinkedList) SetHead(node NodeManipulator) {
 	ll.head = node
-	return node
 }
 
 func (ll *LinkedList) Tail() NodeManipulator {
 	return ll.tail
 }
 
-func (ll *LinkedList) SetTail(node NodeManipulator) NodeManipulator {
+func (ll *LinkedList) SetTail(node NodeManipulator) {
 	ll.tail = node
-	return node
+
 }
 
 func (ll *LinkedList) Length() int {
 	return ll.length
 }
 
-func (ll *LinkedList) Add(node NodeManipulator) NodeManipulator {
+func (ll *LinkedList) Add(node NodeManipulator) {
 	if ll.head == nil {
 		ll.head = node
 		ll.tail = node
-
 		ll.incrementLength()
 
-		return node
+		node.SetParentList(ll)
+
+		return
 	}
 
 	node.SetPrevNode(ll.tail)
+
 	ll.tail.SetNextNode(node)
 	ll.tail = node
 	ll.incrementLength()
 
 	node.SetParentList(ll)
-
-	return node
 }
 
 func (ll *LinkedList) incrementLength() {
@@ -181,6 +176,11 @@ func (ll LinkedList) ForEach(callback func(node NodeManipulator), reverse bool) 
 	if reverse {
 		node := ll.tail
 
+		// Don't do anything if there are no nodes
+		if node == nil {
+			return
+		}
+
 		for {
 			callback(node)
 
@@ -194,6 +194,11 @@ func (ll LinkedList) ForEach(callback func(node NodeManipulator), reverse bool) 
 
 	} else {
 		node := ll.head
+
+		// Don't do anything if there are no nodes
+		if node == nil {
+			return
+		}
 
 		for {
 			callback(node)
@@ -229,6 +234,11 @@ type Node struct {
 	next       NodeManipulator
 }
 
+func (n *Node) String() string {
+	// return fmt.Sprintf("Node{ parentList: %v, prev: %v, next: %v }", n.parentList, n.prev, n.next)
+	return fmt.Sprintf("Node{ prev: %v, next: %v }", n.prev, n.next)
+}
+
 func (n *Node) SetParentList(list *LinkedList) {
 	n.parentList = list
 }
@@ -250,13 +260,10 @@ func (n *Node) SetNextNode(node NodeManipulator) {
 }
 
 func (n *Node) RemoveNode() {
-	//TODO: this errors when right clicking to delete nodes
 	// There are always 2 refs to delete to garbage collect this node...
 	if n.prev == nil {
 		//* If this node is head AND tail
 		if n.next == nil {
-			fmt.Println("NODE")
-			fmt.Println(n)
 			// Both refs are from list (head, tail), since there are no other nodes
 			n.parentList.SetTail(nil)
 			n.parentList.SetHead(nil)
@@ -265,8 +272,6 @@ func (n *Node) RemoveNode() {
 			return
 		}
 
-		fmt.Println("NODE")
-		fmt.Println(n)
 		//* If this node is ONLY head
 		// One ref from list (head) and one ref from next node (prev)
 		n.parentList.SetHead(n.next)
@@ -278,8 +283,6 @@ func (n *Node) RemoveNode() {
 
 	//* If this node is ONLY tail
 	if n.next == nil {
-		fmt.Println("NODE")
-		fmt.Println(n)
 		// One ref from list (tail) and one ref from prev node (next)
 		n.parentList.SetTail(n.prev)
 		n.prev.SetNextNode(nil)
@@ -290,9 +293,6 @@ func (n *Node) RemoveNode() {
 
 	//* If this node is NEITHER head nor tail
 	// One ref from both prev (next) and next (prev)
-	fmt.Println("NODE")
-	fmt.Println(n)
-
 	n.prev.SetNextNode(n.next)
 	n.next.SetPrevNode(n.prev)
 
@@ -321,6 +321,14 @@ func NewDot(coords Point, parentList *LinkedList, parentGrid *Grid) *Dot {
 		image: image,
 		Cell:  Cell{position: coords},
 		fill:  color,
+	}
+
+	// Remove existing dot at same location, if there is any
+	existingCell := parentGrid.Get(coords)
+	if existingCell != nil {
+		existingDot := existingCell.(*Dot)
+
+		existingDot.Remove()
 	}
 
 	parentList.Add(dot)
