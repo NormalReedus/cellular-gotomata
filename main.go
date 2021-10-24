@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"image/color"
 	_ "image/png" // necessary for loading images
 	"log"
 	"math/rand"
@@ -21,8 +21,9 @@ const (
 var (
 	gameFrameCount = 0
 	//TODO: different colors on pause / running
-	bgColor, _ = colorx.ParseHexColor("#343a40")
-	game       *Game
+	bgColor, _       = colorx.ParseHexColor("#343a40")
+	bgColorPaused, _ = colorx.ParseHexColor("#343a50")
+	game             *Game
 )
 
 func init() {
@@ -34,16 +35,7 @@ func init() {
 }
 
 func setupInitialState() {
-	game = &Game{dotList: NewLinkedList(), dotGrid: NewGrid(), paused: true}
-
-	// for i := 0; i < numDots; i++ {
-	// 	coords, err := game.dotGrid.RandomOpenCell()
-	// 	if err != nil {
-	// 		log.Fatal("you have added too many dots for this grid")
-	// 	}
-
-	// 	NewDot(*coords, game.dotList, game.dotGrid)
-	// }
+	game = &Game{mainList: NewLinkedList(), tempList: NewLinkedList(), mainGrid: NewGrid(), tempGrid: NewGrid(), paused: true}
 }
 
 func main() {
@@ -55,9 +47,19 @@ func main() {
 }
 
 type Game struct {
-	dotList *LinkedList
-	dotGrid *Grid
-	paused  bool
+	mainList *LinkedList
+	tempList *LinkedList
+	mainGrid *Grid
+	tempGrid *Grid
+	paused   bool
+}
+
+func (g *Game) BgColor() color.RGBA {
+	if g.paused {
+		return bgColorPaused
+	}
+
+	return bgColor
 }
 
 func (g *Game) Update() error {
@@ -74,7 +76,7 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(bgColor)
+	screen.Fill(g.BgColor())
 
 	drawDots(screen)
 
@@ -107,12 +109,14 @@ func inputUpdate() {
 	//TODO: make these handlers into functions
 	coords := leftClick()
 	if coords != nil {
-		NewDot(*coords, game.dotList, game.dotGrid)
+		NewDot(*coords, game.mainList, game.mainGrid)
+
+		NewWindow(game.mainGrid, *coords, 3)
 	}
 
 	coords = rightClick()
 	if coords != nil {
-		node := game.dotGrid.Get(*coords)
+		node := game.mainGrid.Get(*coords)
 		if node == nil {
 			return
 		}
@@ -128,30 +132,31 @@ func inputUpdate() {
 
 // Slower TPS
 func gameUpdate() {
-	if !game.Paused() {
-		wanderDots()
+	if game.Paused() {
+		return
 	}
+
 }
 
 func drawDots(screen *ebiten.Image) {
-	game.dotList.ForEach(func(nm NodeManipulator) {
+	game.mainList.ForEach(func(nm NodeManipulator) {
 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
 		dot := nm.(*Dot)
 		dot.Draw(screen)
 	}, false)
 }
 
-func wanderDots() {
-	game.dotList.ForEach(func(nm NodeManipulator) {
-		// Assert that dotnode is a *Dot, so we can use *Dot's methods
-		dot := nm.(*Dot)
-		newCoords, _ := game.dotGrid.RandomOpenCell()
+// func wanderDots() {
+// 	game.mainList.ForEach(func(nm NodeManipulator) {
+// 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
+// 		dot := nm.(*Dot)
+// 		newCoords, _ := game.mainGrid.RandomOpenCell()
 
-		if err := dot.MoveCell(*newCoords); err != nil {
-			fmt.Println(err) // should never happen, since RandomOpenCell should never return an occupied cell
-		}
-	}, false)
-}
+// 		if err := dot.MoveCell(*newCoords); err != nil {
+// 			fmt.Println(err) // should never happen, since RandomOpenCell should never return an occupied cell
+// 		}
+// 	}, false)
+// }
 
 func debugInit() {
 

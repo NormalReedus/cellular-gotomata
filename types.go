@@ -32,8 +32,9 @@ func (g *Grid) String() string {
 	return fmt.Sprintf("Grid{ numUsedCells: %d }", g.numUsedCells)
 }
 
+// Returns the last cells that can contain values
 func (g *Grid) Bounds() (int, int) {
-	return len(g.grid), len(g.grid[0])
+	return len(g.grid) - 1, len(g.grid[0]) - 1
 }
 
 func (g *Grid) Get(coords Point) CellManipulator {
@@ -96,6 +97,109 @@ func (g *Grid) DecrementNumUsedCells() {
 	g.numUsedCells--
 }
 
+func (g *Grid) Convolve(windowSize uint) {
+	//TODO: create loop that lets user interact with windows
+	// take a windowSize and callback
+	// loop through all cells in grid
+	// initialize Window with every cell coords in loop and windowSize
+	// call the callback and pass in the windowSize
+
+	// This will enable the user to interact with a window for every cell, check if cells around are empty or not and extract the center cell value if needed
+	// If any other interactions are needed on a window, they can be added as a func on Window (e.g. apply a kernel - kernels are only useful if the exact position of cells around matters, not if we just need the number of empty cells as we do with Conways Game of Life)
+}
+
+//* -------------------------
+//* WINDOW
+//* -------------------------
+type Window struct {
+	grid   *Grid
+	center Point
+	size   int
+	data   [][]CellManipulator
+}
+
+// Will pad the grid with nil values if needed
+func NewWindow(grid *Grid, coords Point, size int) *Window {
+	if size%2 != 1 {
+		log.Fatal("window 'size' can only be an odd number")
+	}
+
+	window := &Window{grid: grid, center: coords, size: size}
+
+	var data [][]CellManipulator
+
+	reach := window.Reach()
+	winMinX, winMaxX := coords.X-reach, coords.X+reach
+	winMinY, winMaxY := coords.Y-reach, coords.Y+reach
+	boundsX, boundsY := grid.Bounds()
+
+	for x := winMinX; x <= winMaxX; x++ {
+		col := make([]CellManipulator, 0)
+
+		for y := winMinY; y <= winMaxY; y++ {
+
+			var cellValue CellManipulator
+
+			if x < 0 || x > boundsX || y < 0 || y > boundsY {
+				cellValue = nil
+			} else {
+				cellValue = grid.Get(*NewPoint(x, y))
+			}
+
+			col = append(col, cellValue)
+		}
+
+		data = append(data, col)
+	}
+
+	window.data = data
+
+	return window
+}
+
+// Returns how many cells to each side of center the window spans
+func (w *Window) Reach() int {
+	return (w.size - 1) / 2
+}
+
+func (w *Window) CenterIndex() int {
+	return w.size - w.Reach() - 1
+}
+
+func (w *Window) Center() CellManipulator {
+	index := w.CenterIndex()
+	return w.data[index][index]
+}
+
+// Returns the number of empty cells around the center cell
+func (w *Window) NumEmpty() int {
+	var count int
+
+	center := w.CenterIndex()
+
+	for x, col := range w.data {
+		for y, val := range col {
+			if x == center && y == center {
+				continue
+			}
+
+			if val == nil {
+				count++
+			}
+		}
+	}
+
+	return count
+}
+
+// // Applying a kernel on the window should return a new value for the center position of the window
+// func (w *Window) ApplyKernel() CellManipulator {
+// 	return
+// }
+
+//* -------------------------
+//* CELL
+//* -------------------------
 // Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
 // This makes any embedding struct implement the CellManipulator
 type CellManipulator interface {
@@ -400,6 +504,10 @@ func (d *Dot) Draw(screen *ebiten.Image) {
 // Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
 type Point struct {
 	X, Y int
+}
+
+func NewPoint(x, y int) *Point {
+	return &Point{X: x, Y: y}
 }
 
 func (p Point) String() string {
