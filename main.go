@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	_ "image/png" // necessary for loading images
 	"log"
 	"math/rand"
@@ -10,9 +11,6 @@ import (
 	"github.com/icza/gox/imagex/colorx"
 )
 
-//TODO: there should be something that adds a dot to both grid and ll at the same time (a method on Game? Game would then also have a prop for grid and ll that is THE structures to add to). It should take coords, create the Dot, call ll.Add and grid.Set with the coords
-//TODO: add struct / interfaces for rules of the game. There should be different structs that implement the same interface, that specify the rules for every tick. This should be embedded in Dot and Grid and LL etc.
-// There could for example be a Move() in the interface, and depending on the struct, the Move() function behaves differently, e.g. by moving a specific number of steps specified by a struct field or whether it should die when something specific happens etc.
 const (
 	screenWidth, screenHeight = 30, 30
 	numDots                   = 3
@@ -22,8 +20,9 @@ const (
 
 var (
 	gameFrameCount = 0
-	bgColor, _     = colorx.ParseHexColor("#343a40")
-	game           *Game
+	//TODO: different colors on pause / running
+	bgColor, _ = colorx.ParseHexColor("#343a40")
+	game       *Game
 )
 
 func init() {
@@ -35,16 +34,16 @@ func init() {
 }
 
 func setupInitialState() {
-	game = &Game{dotList: NewLinkedList(), dotGrid: NewGrid()}
+	game = &Game{dotList: NewLinkedList(), dotGrid: NewGrid(), paused: true}
 
-	for i := 0; i < numDots; i++ {
-		coords, err := game.dotGrid.RandomOpenCell()
-		if err != nil {
-			log.Fatal("you have added too many dots for this grid")
-		}
+	// for i := 0; i < numDots; i++ {
+	// 	coords, err := game.dotGrid.RandomOpenCell()
+	// 	if err != nil {
+	// 		log.Fatal("you have added too many dots for this grid")
+	// 	}
 
-		NewDot(*coords, game.dotList, game.dotGrid)
-	}
+	// 	NewDot(*coords, game.dotList, game.dotGrid)
+	// }
 }
 
 func main() {
@@ -58,6 +57,7 @@ func main() {
 type Game struct {
 	dotList *LinkedList
 	dotGrid *Grid
+	paused  bool
 }
 
 func (g *Game) Update() error {
@@ -73,31 +73,6 @@ func (g *Game) Update() error {
 	return nil
 }
 
-// Default TPS
-func inputUpdate() {
-	//TODO: make these handlers into functions
-	coords := leftClick()
-	if coords != nil {
-		NewDot(*coords, game.dotList, game.dotGrid)
-
-	}
-	coords = rightClick()
-	if coords != nil {
-		node := game.dotGrid.Get(*coords)
-		if node == nil {
-			return
-		}
-		dot := node.(*Dot)
-
-		dot.Remove()
-	}
-}
-
-// Slower TPS
-func gameUpdate() {
-	// wanderDots()
-}
-
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(bgColor)
 
@@ -109,6 +84,53 @@ func (g *Game) Draw(screen *ebiten.Image) {
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 	return screenWidth, screenHeight
+}
+
+func (g Game) Paused() bool {
+	return g.paused
+}
+
+func (g *Game) Pause() {
+	g.paused = true
+}
+
+func (g *Game) UnPause() {
+	g.paused = false
+}
+
+func (g *Game) TogglePause() {
+	g.paused = !g.paused
+}
+
+// Default TPS
+func inputUpdate() {
+	//TODO: make these handlers into functions
+	coords := leftClick()
+	if coords != nil {
+		NewDot(*coords, game.dotList, game.dotGrid)
+	}
+
+	coords = rightClick()
+	if coords != nil {
+		node := game.dotGrid.Get(*coords)
+		if node == nil {
+			return
+		}
+		dot := node.(*Dot)
+
+		dot.Remove()
+	}
+
+	if spaceKey() {
+		game.TogglePause()
+	}
+}
+
+// Slower TPS
+func gameUpdate() {
+	if !game.Paused() {
+		wanderDots()
+	}
 }
 
 func drawDots(screen *ebiten.Image) {
@@ -124,12 +146,15 @@ func wanderDots() {
 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
 		dot := nm.(*Dot)
 		newCoords, _ := game.dotGrid.RandomOpenCell()
-		dot.MoveCell(*newCoords)
 
+		if err := dot.MoveCell(*newCoords); err != nil {
+			fmt.Println(err) // should never happen, since RandomOpenCell should never return an occupied cell
+		}
 	}, false)
 }
 
 func debugInit() {
+
 }
 
 func debugUpdate() {

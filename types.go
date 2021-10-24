@@ -15,13 +15,21 @@ import (
 //* -------------------------
 //* GRID
 //* -------------------------
-
+//TODO: should have a temporary grid that is cleared every game tick
+// but every cell should be a slice, so we can tell if several dots want to move to the same place and handle that in the next phase
+// when making a move, the new position should be set in the temp grid, so we can handle collisions AFTER a move by just looking at whether a cell has more than one Dot
+// after interactions have been handled, the resulting tempGrid can be flattened (so every cell is once again just one value) and the main grid can point to the tempGrid, and the cycle continues
 type Grid struct {
-	grid [screenWidth][screenHeight]CellManipulator
+	grid         [screenWidth][screenHeight]CellManipulator
+	numUsedCells int
 }
 
 func NewGrid() *Grid {
 	return &Grid{}
+}
+
+func (g *Grid) String() string {
+	return fmt.Sprintf("Grid{ numUsedCells: %d }", g.numUsedCells)
 }
 
 func (g *Grid) Bounds() (int, int) {
@@ -32,19 +40,31 @@ func (g *Grid) Get(coords Point) CellManipulator {
 	return g.grid[coords.X][coords.Y]
 }
 
-func (g *Grid) Move(currentCoords Point, newCoords Point, cell CellManipulator) {
+func (g *Grid) Move(currentCoords Point, newCoords Point, cell CellManipulator) error {
+	if g.Get(newCoords) != nil {
+		return fmt.Errorf("cannot move %v to cell with coords %v: the target cell is already occupied", g.Get(currentCoords), newCoords)
+	}
+
 	g.Remove(currentCoords)
 	g.Set(newCoords, cell)
-	cell.Position().SetCoords(newCoords.X, newCoords.Y)
+
+	cell.SetPosition(newCoords)
+
+	return nil
 }
 func (g *Grid) Set(coords Point, cell CellManipulator) {
 	g.grid[coords.X][coords.Y] = cell
 
 	cell.SetParentGrid(g)
+
+	g.IncrementNumUsedCells()
 }
 
+// Only used to clear Dot in grid, to completely delete Dot, use Dot.Remove()
 func (g *Grid) Remove(coords Point) {
 	g.grid[coords.X][coords.Y] = nil
+
+	g.DecrementNumUsedCells()
 }
 
 func (g *Grid) RandomOpenCell() (*Point, error) {
@@ -68,13 +88,22 @@ func (g *Grid) RandomOpenCell() (*Point, error) {
 	return &openCells[randCellNum], nil
 }
 
+func (g *Grid) IncrementNumUsedCells() {
+	g.numUsedCells++
+}
+
+func (g *Grid) DecrementNumUsedCells() {
+	g.numUsedCells--
+}
+
 // Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
 // This makes any embedding struct implement the CellManipulator
 type CellManipulator interface {
 	SetParentGrid(grid *Grid)
-	MoveCell(coords Point)
+	MoveCell(coords Point) error
 	RemoveCell()
 	Position() *Point
+	SetPosition(Point)
 }
 
 type Cell struct {
@@ -86,16 +115,16 @@ func (c *Cell) SetParentGrid(grid *Grid) {
 	c.parentGrid = grid
 }
 
-func (c *Cell) MoveCell(coords Point) {
-	c.parentGrid.Move(c.position, coords, c)
-}
-
 func (c *Cell) RemoveCell() {
 	c.parentGrid.Remove(c.position)
 }
 
 func (c *Cell) Position() *Point {
 	return &c.position
+}
+
+func (c *Cell) SetPosition(coords Point) {
+	c.position.SetCoords(coords.X, coords.Y)
 }
 
 //* -------------------------
@@ -349,6 +378,10 @@ func (d Dot) String() string {
 	return fmt.Sprintf("Dot{ x: %d, y: %d, prev: %v, next: %v }", d.Position().X, d.Position().Y, prevPos, nextPos)
 }
 
+func (d *Dot) MoveCell(coords Point) error {
+	return d.parentGrid.Move(d.position, coords, d)
+}
+
 func (d *Dot) Remove() {
 	d.RemoveNode()
 	d.RemoveCell()
@@ -377,6 +410,6 @@ func (p *Point) SetCoords(x, y int) {
 	p.X = x
 	p.Y = y
 }
-func (p *Point) GetCoords() (int, int) {
+func (p Point) Coords() (int, int) {
 	return p.X, p.Y
 }
