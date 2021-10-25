@@ -15,12 +15,8 @@ import (
 //* -------------------------
 //* GRID
 //* -------------------------
-//TODO: should have a temporary grid that is cleared every game tick
-// but every cell should be a slice, so we can tell if several dots want to move to the same place and handle that in the next phase
-// when making a move, the new position should be set in the temp grid, so we can handle collisions AFTER a move by just looking at whether a cell has more than one Dot
-// after interactions have been handled, the resulting tempGrid can be flattened (so every cell is once again just one value) and the main grid can point to the tempGrid, and the cycle continues
 type Grid struct {
-	grid         [screenWidth][screenHeight]CellManipulator
+	data         [screenWidth][screenHeight]CellManipulator
 	numUsedCells int
 }
 
@@ -32,13 +28,19 @@ func (g *Grid) String() string {
 	return fmt.Sprintf("Grid{ numUsedCells: %d }", g.numUsedCells)
 }
 
+func (g Grid) CreateTempGrid() [screenWidth][screenHeight]CellManipulator {
+	var tempGrid [screenWidth][screenHeight]CellManipulator
+
+	return tempGrid
+}
+
 // Returns the last cells that can contain values
 func (g *Grid) Bounds() (int, int) {
-	return len(g.grid) - 1, len(g.grid[0]) - 1
+	return len(g.data) - 1, len(g.data[0]) - 1
 }
 
 func (g *Grid) Get(coords Point) CellManipulator {
-	return g.grid[coords.X][coords.Y]
+	return g.data[coords.X][coords.Y]
 }
 
 func (g *Grid) Move(currentCoords Point, newCoords Point, cell CellManipulator) error {
@@ -54,7 +56,7 @@ func (g *Grid) Move(currentCoords Point, newCoords Point, cell CellManipulator) 
 	return nil
 }
 func (g *Grid) Set(coords Point, cell CellManipulator) {
-	g.grid[coords.X][coords.Y] = cell
+	g.data[coords.X][coords.Y] = cell
 
 	cell.SetParentGrid(g)
 
@@ -63,7 +65,7 @@ func (g *Grid) Set(coords Point, cell CellManipulator) {
 
 // Only used to clear Dot in grid, to completely delete Dot, use Dot.Remove()
 func (g *Grid) Remove(coords Point) {
-	g.grid[coords.X][coords.Y] = nil
+	g.data[coords.X][coords.Y] = nil
 
 	g.DecrementNumUsedCells()
 }
@@ -71,9 +73,9 @@ func (g *Grid) Remove(coords Point) {
 func (g *Grid) RandomOpenCell() (*Point, error) {
 	var openCells []Point
 
-	for x, column := range g.grid {
+	for x, column := range g.data {
 		for y := range column {
-			if g.grid[x][y] == nil {
+			if g.data[x][y] == nil {
 				p := Point{X: x, Y: y}
 				openCells = append(openCells, p)
 			}
@@ -97,15 +99,22 @@ func (g *Grid) DecrementNumUsedCells() {
 	g.numUsedCells--
 }
 
-func (g *Grid) Convolve(windowSize uint) {
-	//TODO: create loop that lets user interact with windows
-	// take a windowSize and callback
-	// loop through all cells in grid
-	// initialize Window with every cell coords in loop and windowSize
-	// call the callback and pass in the windowSize
+func (g *Grid) Convolve(windowSize int, callback func(*Window) CellManipulator) [screenWidth][screenHeight]CellManipulator {
+	tempGrid := g.CreateTempGrid()
 
-	// This will enable the user to interact with a window for every cell, check if cells around are empty or not and extract the center cell value if needed
-	// If any other interactions are needed on a window, they can be added as a func on Window (e.g. apply a kernel - kernels are only useful if the exact position of cells around matters, not if we just need the number of empty cells as we do with Conways Game of Life)
+	for x := 0; x < len(g.data); x++ {
+		for y := 0; y < len(g.data[x]); y++ {
+			coords := *NewPoint(x, y)
+
+			win := NewWindow(g, coords, windowSize)
+
+			cellVal := callback(win)
+
+			tempGrid[x][y] = cellVal
+		}
+	}
+
+	return tempGrid
 }
 
 //* -------------------------

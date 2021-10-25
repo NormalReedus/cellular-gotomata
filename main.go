@@ -11,6 +11,8 @@ import (
 	"github.com/icza/gox/imagex/colorx"
 )
 
+//TODO: In GameUpdate - Convolve through grid, implement GoL in callback, replace game.grid with resulting tempGrid
+
 const (
 	screenWidth, screenHeight = 30, 30
 	numDots                   = 3
@@ -19,8 +21,7 @@ const (
 )
 
 var (
-	gameFrameCount = 0
-	//TODO: different colors on pause / running
+	gameFrameCount   = 0
 	bgColor, _       = colorx.ParseHexColor("#343a40")
 	bgColorPaused, _ = colorx.ParseHexColor("#343a50")
 	game             *Game
@@ -35,7 +36,7 @@ func init() {
 }
 
 func setupInitialState() {
-	game = &Game{mainList: NewLinkedList(), tempList: NewLinkedList(), mainGrid: NewGrid(), tempGrid: NewGrid(), paused: true}
+	game = &Game{grid: NewGrid(), list: NewLinkedList(), paused: true}
 }
 
 func main() {
@@ -47,11 +48,9 @@ func main() {
 }
 
 type Game struct {
-	mainList *LinkedList
-	tempList *LinkedList
-	mainGrid *Grid
-	tempGrid *Grid
-	paused   bool
+	grid   *Grid
+	list   *LinkedList
+	paused bool
 }
 
 func (g *Game) BgColor() color.RGBA {
@@ -109,14 +108,12 @@ func inputUpdate() {
 	//TODO: make these handlers into functions
 	coords := leftClick()
 	if coords != nil {
-		NewDot(*coords, game.mainList, game.mainGrid)
-
-		NewWindow(game.mainGrid, *coords, 3)
+		NewDot(*coords, game.list, game.grid)
 	}
 
 	coords = rightClick()
 	if coords != nil {
-		node := game.mainGrid.Get(*coords)
+		node := game.grid.Get(*coords)
 		if node == nil {
 			return
 		}
@@ -139,7 +136,7 @@ func gameUpdate() {
 }
 
 func drawDots(screen *ebiten.Image) {
-	game.mainList.ForEach(func(nm NodeManipulator) {
+	game.list.ForEach(func(nm NodeManipulator) {
 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
 		dot := nm.(*Dot)
 		dot.Draw(screen)
