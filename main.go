@@ -11,7 +11,7 @@ import (
 	"github.com/icza/gox/imagex/colorx"
 )
 
-//TODO: In GameUpdate - Convolve through grid, implement GoL in callback, replace game.grid with resulting tempGrid
+//TODO: Fix crash: runner-build.exe eats ALL ram when running with a dot placed a specific place, the window crashes, not the logic
 
 const (
 	screenWidth, screenHeight = 30, 30
@@ -129,10 +129,21 @@ func inputUpdate() {
 
 // Slower TPS
 func gameUpdate() {
+	// PrintMemUsage()
+
 	if game.Paused() {
 		return
 	}
 
+	newGridState := game.grid.Convolve(3, func(win *Window) CellManipulator {
+		cell := win.Get(*NewPoint(0, 1))
+		return cell
+	})
+
+	//TODO: fix that game does not draw the replaced state / the state is not replaced correctly?
+	newLinkedListState := NewLinkedListFromMatrix(&newGridState)
+	game.grid.ReplaceState(newGridState)
+	game.list = newLinkedListState
 }
 
 func drawDots(screen *ebiten.Image) {

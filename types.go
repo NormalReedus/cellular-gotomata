@@ -16,7 +16,7 @@ import (
 //* GRID
 //* -------------------------
 type Grid struct {
-	data         [screenWidth][screenHeight]CellManipulator
+	data         ScreenPixelMatrix
 	numUsedCells int
 }
 
@@ -28,8 +28,8 @@ func (g *Grid) String() string {
 	return fmt.Sprintf("Grid{ numUsedCells: %d }", g.numUsedCells)
 }
 
-func (g Grid) CreateTempGrid() [screenWidth][screenHeight]CellManipulator {
-	var tempGrid [screenWidth][screenHeight]CellManipulator
+func (g Grid) CreateTempGrid() ScreenPixelMatrix {
+	var tempGrid ScreenPixelMatrix
 
 	return tempGrid
 }
@@ -55,12 +55,17 @@ func (g *Grid) Move(currentCoords Point, newCoords Point, cell CellManipulator) 
 
 	return nil
 }
+
 func (g *Grid) Set(coords Point, cell CellManipulator) {
 	g.data[coords.X][coords.Y] = cell
 
 	cell.SetParentGrid(g)
 
 	g.IncrementNumUsedCells()
+}
+
+func (g *Grid) ReplaceState(data ScreenPixelMatrix) {
+	g.data = data
 }
 
 // Only used to clear Dot in grid, to completely delete Dot, use Dot.Remove()
@@ -99,7 +104,7 @@ func (g *Grid) DecrementNumUsedCells() {
 	g.numUsedCells--
 }
 
-func (g *Grid) Convolve(windowSize int, callback func(*Window) CellManipulator) [screenWidth][screenHeight]CellManipulator {
+func (g *Grid) Convolve(windowSize int, callback func(*Window) CellManipulator) ScreenPixelMatrix {
 	tempGrid := g.CreateTempGrid()
 
 	for x := 0; x < len(g.data); x++ {
@@ -168,7 +173,7 @@ func NewWindow(grid *Grid, coords Point, size int) *Window {
 
 // Returns how many cells to each side of center the window spans
 func (w *Window) Reach() int {
-	return (w.size - 1) / 2
+	return w.size >> 1 // divide by 2, round down
 }
 
 func (w *Window) CenterIndex() int {
@@ -178,6 +183,10 @@ func (w *Window) CenterIndex() int {
 func (w *Window) Center() CellManipulator {
 	index := w.CenterIndex()
 	return w.data[index][index]
+}
+
+func (w *Window) Get(coords Point) CellManipulator {
+	return w.data[coords.X][coords.Y]
 }
 
 // Returns the number of empty cells around the center cell
@@ -250,9 +259,21 @@ type LinkedList struct {
 	length int
 }
 
-// func NewLinkedList(nodes ...NodeManipulator) *LinkedList {
 func NewLinkedList() *LinkedList {
 	ll := &LinkedList{}
+
+	return ll
+}
+
+func NewLinkedListFromMatrix(matrix *ScreenPixelMatrix) *LinkedList {
+	ll := &LinkedList{}
+
+	cells := matrix.GetAllNonEmpty()
+
+	for _, cell := range cells {
+		// Every CellManipulator-implementing struct should also implement NodeManipulator
+		ll.Add(cell.(NodeManipulator))
+	}
 
 	return ll
 }
@@ -529,4 +550,24 @@ func (p *Point) SetCoords(x, y int) {
 }
 func (p Point) Coords() (int, int) {
 	return p.X, p.Y
+}
+
+//* -------------------------
+//* SCREEN PIXEL MATRIX
+//* -------------------------
+type ScreenPixelMatrix [screenWidth][screenHeight]CellManipulator
+
+func (spm *ScreenPixelMatrix) GetAllNonEmpty() []CellManipulator {
+	var cells []CellManipulator
+
+	for _, col := range spm {
+		for _, cell := range col {
+			// cell should be pointer to CellManipulator value struct
+			if cell != nil {
+				cells = append(cells, cell)
+			}
+		}
+	}
+
+	return cells
 }
