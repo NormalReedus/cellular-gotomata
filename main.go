@@ -8,36 +8,25 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/icza/gox/imagex/colorx"
 )
-
-//TODO: Fix crash: crashes when game is unpaused and there are more than 5 dots. It eats all memory
-//! happens when converting a ScreenPixelMatrix to a LinkedList - presumably because of the many nested loops per second
-//? potential fix is to drop a linked list altogether and just loop through the grid for everything. This would also simplify everything else
 
 const (
 	screenWidth, screenHeight = 30, 30
-	// Update is still ~60 (default) TPS to listen better for mouse events, this just applies to game logic
-	gameUpdateOnFrame = 20
+	pixelSize                 = 30
 )
 
 var (
-	gameFrameCount   = 0
-	bgColor, _       = colorx.ParseHexColor("#343a40")
-	bgColorPaused, _ = colorx.ParseHexColor("#343a50")
-	game             *Game
+	game *Game
 )
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	ebiten.SetWindowSize(screenWidth*30, screenHeight*30)
+	ebiten.SetWindowSize(screenWidth*pixelSize, screenHeight*pixelSize)
 	ebiten.SetWindowTitle("Cellular Automata")
-
-	debugInit()
 }
 
 func setupInitialState() {
-	game = &Game{grid: NewGrid(), list: NewLinkedList(), paused: true}
+	game = &Game{grid: NewGrid(), paused: true}
 }
 
 func main() {
@@ -48,77 +37,20 @@ func main() {
 	}
 }
 
-type Game struct {
-	grid   *Grid
-	list   *LinkedList
-	paused bool
-}
-
-func (g *Game) BgColor() color.RGBA {
-	if g.paused {
-		return bgColorPaused
-	}
-
-	return bgColor
-}
-
-func (g *Game) Update() error {
-	inputUpdate()
-
-	// Only update game on every 20 frames
-	gameFrameCount = (gameFrameCount + 1) % gameUpdateOnFrame
-	if gameFrameCount == 0 {
-		gameUpdate()
-	}
-
-	debugUpdate()
-	return nil
-}
-
-func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(g.BgColor())
-
-	drawDots(screen)
-
-	debugDraw()
-}
-
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-
-	return screenWidth, screenHeight
-}
-
-func (g Game) Paused() bool {
-	return g.paused
-}
-
-func (g *Game) Pause() {
-	g.paused = true
-}
-
-func (g *Game) UnPause() {
-	g.paused = false
-}
-
-func (g *Game) TogglePause() {
-	g.paused = !g.paused
-}
-
 // Default TPS
 func inputUpdate() {
 	//TODO: make these handlers into functions
 	coords := leftClick()
 	if coords != nil {
-		NewDot(*coords, game.list, game.grid)
+		NewDot(*coords, game.grid)
 	}
 
 	coords = rightClick()
 	if coords != nil {
-		node := game.grid.Get(*coords)
-		if node == nil {
+		dot, err := game.grid.Get(*coords)
+		if dot == nil || err != nil {
 			return
 		}
-		dot := node.(*Dot)
 
 		dot.Remove()
 	}
@@ -126,56 +58,47 @@ func inputUpdate() {
 	if spaceKey() {
 		game.TogglePause()
 	}
+
+	if cKey() {
+		game.Restart()
+	}
 }
 
 // Slower TPS
 func gameUpdate() {
-
 	if game.Paused() {
 		return
 	}
 
-	newGridState := game.grid.Convolve(3, func(win *Window) CellManipulator {
-		cell := win.Get(*NewPoint(1, 1))
-		return cell
+	game.grid.Convolve(3, func(win *Window) *Dot {
+		//* https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
+		dead := win.NumEmptyNeighbors()
+		alive := 8 - dead
+
+		currentVal := win.Center()
+
+		// "Any live cell with two or three live neighbours survives."
+		if currentVal != nil && between(alive, 2, 3) {
+			return currentVal
+		}
+
+		// "Any dead cell with three live neighbours becomes a live cell."
+		if currentVal == nil && alive == 3 {
+			return NewDot(win.GridCoords(), nil) // parentGrid is set in grid.Convolve instead
+		}
+
+		// "All other live cells die in the next generation." / "...all other dead cells stay dead."
+		return nil
 	})
 
-	newLinkedListState := NewLinkedListFromMatrix(&newGridState)
-	game.grid.ReplaceState(newGridState)
-	game.list = newLinkedListState
+}
 
-	// fmt.Println(game.grid.numUsedCells)
-	// fmt.Println(game.list.length)
-	// PrintMemUsage()
+func drawBackground(screen *ebiten.Image, clr color.RGBA) {
+	screen.Fill(clr)
 }
 
 func drawDots(screen *ebiten.Image) {
-	game.list.ForEach(func(nm NodeManipulator) {
-		// Assert that dotnode is a *Dot, so we can use *Dot's methods
-		dot := nm.(*Dot)
+	game.grid.ForEach(func(dot *Dot) {
 		dot.Draw(screen)
-	}, false)
-}
-
-// func wanderDots() {
-// 	game.mainList.ForEach(func(nm NodeManipulator) {
-// 		// Assert that dotnode is a *Dot, so we can use *Dot's methods
-// 		dot := nm.(*Dot)
-// 		newCoords, _ := game.mainGrid.RandomOpenCell()
-
-// 		if err := dot.MoveCell(*newCoords); err != nil {
-// 			fmt.Println(err) // should never happen, since RandomOpenCell should never return an occupied cell
-// 		}
-// 	}, false)
-// }
-
-func debugInit() {
-
-}
-
-func debugUpdate() {
-
-}
-
-func debugDraw() {
+	})
 }

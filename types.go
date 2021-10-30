@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"log"
 	"math/rand"
-	"reflect"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/icza/gox/imagex/colorx"
@@ -28,48 +27,76 @@ func (g *Grid) String() string {
 	return fmt.Sprintf("Grid{ numUsedCells: %d }", g.numUsedCells)
 }
 
-func (g Grid) CreateTempGrid() ScreenPixelMatrix {
-	var tempGrid ScreenPixelMatrix
-
-	return tempGrid
+func (g *Grid) Clear() {
+	g.ReplaceMatrix(g.CreateTempMatrix())
+	g.numUsedCells = 0
 }
 
-// Returns the last cells that can contain values
+func (g Grid) CreateTempMatrix() ScreenPixelMatrix {
+	var matrix ScreenPixelMatrix
+
+	return matrix
+}
+
+// Returns the last col and row num that can contain values
 func (g *Grid) Bounds() (int, int) {
 	return len(g.data) - 1, len(g.data[0]) - 1
 }
 
-func (g *Grid) Get(coords Point) CellManipulator {
-	return g.data[coords.X][coords.Y]
+//TODO: return err (or nil?) if the coords are out of bounds
+func (g *Grid) Get(coords Point) (*Dot, error) {
+	maxX, maxY := g.Bounds()
+	if !between(coords.X, 0, maxX) || !between(coords.Y, 0, maxY) {
+		return nil, fmt.Errorf("cannot 'Get' cell out of grid bounds. Accessing: %v of x: 0 - %d, y: 0 - %d", coords, maxX, maxY)
+	}
+
+	return g.data[coords.X][coords.Y], nil
 }
 
-func (g *Grid) Move(currentCoords Point, newCoords Point, cell CellManipulator) error {
-	if g.Get(newCoords) != nil {
-		return fmt.Errorf("cannot move %v to cell with coords %v: the target cell is already occupied", g.Get(currentCoords), newCoords)
+func (g *Grid) Move(currentCoords Point, newCoords Point, dot *Dot) error {
+	targetDot, err := g.Get(newCoords)
+
+	// Cell already has a dot
+	if targetDot != nil {
+		currentDot, _ := g.Get(currentCoords)
+		return fmt.Errorf("cannot move %v to cell with coords %v: the target cell is already occupied", currentDot, newCoords)
+	}
+	// Tried to access out of bounds
+	if err != nil {
+		currentDot, _ := g.Get(currentCoords)
+		return fmt.Errorf("cannot move %v to cell with coords %v: the target cell is already occupied", currentDot, newCoords)
 	}
 
 	g.Remove(currentCoords)
-	g.Set(newCoords, cell)
-
-	cell.SetPosition(newCoords)
+	g.Set(newCoords, dot)
 
 	return nil
 }
 
-func (g *Grid) Set(coords Point, cell CellManipulator) {
-	g.data[coords.X][coords.Y] = cell
+// Not really used with tempMatrix (in convolutions)
+func (g *Grid) Set(coords Point, dot *Dot) {
+	// Remove existing (if any) dot first, to also decrement usedCells etc
+	if dot, _ := g.Get(coords); dot != nil {
+		g.Remove(coords)
+	}
 
-	cell.SetParentGrid(g)
+	g.data[coords.X][coords.Y] = dot
+
+	dot.SetParentGrid(g)
+	dot.SetPosition(coords)
 
 	g.IncrementNumUsedCells()
 }
 
-func (g *Grid) ReplaceState(data ScreenPixelMatrix) {
+func (g *Grid) ReplaceMatrix(data ScreenPixelMatrix) {
 	g.data = data
 }
 
-// Only used to clear Dot in grid, to completely delete Dot, use Dot.Remove()
 func (g *Grid) Remove(coords Point) {
+	if dot, _ := g.Get(coords); dot == nil {
+		return
+	}
+
 	g.data[coords.X][coords.Y] = nil
 
 	g.DecrementNumUsedCells()
@@ -104,8 +131,9 @@ func (g *Grid) DecrementNumUsedCells() {
 	g.numUsedCells--
 }
 
-func (g *Grid) Convolve(windowSize int, callback func(*Window) CellManipulator) ScreenPixelMatrix {
-	tempGrid := g.CreateTempGrid()
+// Loop though all cells in grid and do an operation within a window (e.g. a kernel operation)
+func (g *Grid) Convolve(windowSize int, callback func(*Window) *Dot) {
+	tempMatrix := g.CreateTempMatrix()
 
 	for x := 0; x < len(g.data); x++ {
 		for y := 0; y < len(g.data[x]); y++ {
@@ -114,15 +142,59 @@ func (g *Grid) Convolve(windowSize int, callback func(*Window) CellManipulator) 
 			win := NewWindow(g, coords, windowSize)
 
 			cellVal := callback(win)
+
 			if cellVal != nil {
 				cellVal.SetPosition(coords)
 			}
 
-			tempGrid[x][y] = cellVal
+			tempMatrix[x][y] = cellVal
+
+			// Keep track of removed / added cells
+			formerCellVal, _ := g.Get(coords)
+			// If this cell used to have a value, but now doesn't
+			if formerCellVal != nil && cellVal == nil {
+				g.DecrementNumUsedCells()
+			}
+			// If this cell had no value, but now it does
+			if formerCellVal == nil && cellVal != nil {
+				g.IncrementNumUsedCells()
+			}
 		}
 	}
 
-	return tempGrid
+	g.ReplaceMatrix(tempMatrix)
+
+	// New dots made in the callback should not have a parentGrid and position in that grid yet, since it is born into the tempMatrix instead
+	// ...therefore we need to set the parent grid for every (newly created) dot here
+	// Other g.Set() functionality such as decrement/increment usedCells and setting position is handled separately above
+	// ... as to avoid using g.Set()
+	g.ForEach(func(dot *Dot) {
+		dot.parentGrid = g
+	})
+}
+
+//*NOTE: collisions can happen, if no intermediary temp matrix is used
+func (g *Grid) ForEach(callback func(dot *Dot)) {
+	// Adding all existing dots to a slice up front makes sure we will only call callback on every dot once
+	var dots []*Dot
+
+	for x := 0; x < len(g.data); x++ {
+		for y := 0; y < len(g.data[x]); y++ {
+			if g.data[x][y] == nil {
+				continue
+			}
+
+			dots = append(dots, g.data[x][y])
+		}
+	}
+
+	if len(dots) == 0 {
+		return
+	}
+
+	for _, dot := range dots {
+		callback(dot)
+	}
 }
 
 //* -------------------------
@@ -132,7 +204,7 @@ type Window struct {
 	grid   *Grid
 	center Point
 	size   int
-	data   [][]CellManipulator
+	matrix [][]*Dot
 }
 
 // Will pad the grid with nil values if needed
@@ -143,62 +215,59 @@ func NewWindow(grid *Grid, coords Point, size int) *Window {
 
 	window := &Window{grid: grid, center: coords, size: size}
 
-	var data [][]CellManipulator
+	var matrix [][]*Dot // matches ScreenPixelMatrix's type, but this is dynamically sized to window size instead of array
 
 	reach := window.Reach()
 	winMinX, winMaxX := coords.X-reach, coords.X+reach
 	winMinY, winMaxY := coords.Y-reach, coords.Y+reach
-	boundsX, boundsY := grid.Bounds()
 
 	for x := winMinX; x <= winMaxX; x++ {
-		col := make([]CellManipulator, 0)
+		col := make([]*Dot, 0)
 
 		for y := winMinY; y <= winMaxY; y++ {
-
-			var cellValue CellManipulator
-
-			if x < 0 || x > boundsX || y < 0 || y > boundsY {
-				cellValue = nil
-			} else {
-				cellValue = grid.Get(*NewPoint(x, y))
-			}
+			// Can be nil
+			cellValue, _ := grid.Get(*NewPoint(x, y))
 
 			col = append(col, cellValue)
 		}
 
-		data = append(data, col)
+		matrix = append(matrix, col)
 	}
 
-	window.data = data
+	window.matrix = matrix
 
 	return window
 }
 
 // Returns how many cells to each side of center the window spans
-func (w *Window) Reach() int {
+func (w Window) Reach() int {
 	return w.size >> 1 // divide by 2, round down
 }
 
-func (w *Window) CenterIndex() int {
+// Returns the index number of the center cell inside window (x AND y coord of center)
+func (w Window) CenterIndex() int {
 	return w.size - w.Reach() - 1
 }
 
-func (w *Window) Center() CellManipulator {
+// Returns the window's centerpoint's value
+func (w *Window) Center() *Dot {
 	index := w.CenterIndex()
-	return w.data[index][index]
+	return w.matrix[index][index]
 }
 
-func (w *Window) Get(coords Point) CellManipulator {
-	return w.data[coords.X][coords.Y]
+// Returns value of arbitrary coord inside window
+func (w *Window) Get(coords Point) *Dot {
+	return w.matrix[coords.X][coords.Y]
 }
 
 // Returns the number of empty cells around the center cell
-func (w *Window) NumEmpty() int {
+func (w Window) NumEmptyNeighbors() int {
+
 	var count int
 
 	center := w.CenterIndex()
 
-	for x, col := range w.data {
+	for x, col := range w.matrix {
 		for y, val := range col {
 			if x == center && y == center {
 				continue
@@ -213,264 +282,43 @@ func (w *Window) NumEmpty() int {
 	return count
 }
 
-// // Applying a kernel on the window should return a new value for the center position of the window
-// func (w *Window) ApplyKernel() CellManipulator {
-// 	return
-// }
+func (w *Window) AliveNeighbors() []*Dot {
+	var dots []*Dot
 
-//* -------------------------
-//* CELL
-//* -------------------------
-// Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
-// This makes any embedding struct implement the CellManipulator
-type CellManipulator interface {
-	SetParentGrid(grid *Grid)
-	MoveCell(coords Point) error
-	RemoveCell()
-	Position() *Point
-	SetPosition(Point)
-}
+	center := w.CenterIndex()
 
-type Cell struct {
-	parentGrid *Grid
-	position   Point
-}
-
-func (c *Cell) SetParentGrid(grid *Grid) {
-	c.parentGrid = grid
-}
-
-func (c *Cell) RemoveCell() {
-	c.parentGrid.Remove(c.position)
-}
-
-func (c *Cell) Position() *Point {
-	return &c.position
-}
-
-func (c *Cell) SetPosition(coords Point) {
-	c.position.SetCoords(coords.X, coords.Y)
-}
-
-//* -------------------------
-//* LINKED LIST
-//* -------------------------
-
-type LinkedList struct {
-	head   NodeManipulator
-	tail   NodeManipulator
-	length int
-}
-
-func NewLinkedList() *LinkedList {
-	ll := &LinkedList{}
-
-	return ll
-}
-
-func NewLinkedListFromMatrix(matrix *ScreenPixelMatrix) *LinkedList {
-	ll := &LinkedList{}
-
-	ll = matrix.ExportToLinkedList(ll)
-
-	return ll
-}
-
-func (ll LinkedList) String() string {
-	if ll.head != nil && ll.tail != nil {
-		return fmt.Sprintf("LinkedList{ nodeType: %s, length: %d, head: %v, tail: %v }", reflect.TypeOf(ll.head), ll.length, ll.head, ll.tail)
-	}
-
-	return "LinkedList{ empty }"
-}
-
-func (ll *LinkedList) Head() NodeManipulator {
-	return ll.head
-}
-
-func (ll *LinkedList) SetHead(node NodeManipulator) {
-	ll.head = node
-}
-
-func (ll *LinkedList) Tail() NodeManipulator {
-	return ll.tail
-}
-
-func (ll *LinkedList) SetTail(node NodeManipulator) {
-	ll.tail = node
-
-}
-
-func (ll *LinkedList) Length() int {
-	return ll.length
-}
-
-func (ll *LinkedList) Add(node NodeManipulator) {
-	if ll.head == nil {
-		ll.head = node
-		ll.tail = node
-		ll.incrementLength()
-
-		node.SetParentList(ll)
-
-		return
-	}
-
-	node.SetPrevNode(ll.tail)
-
-	ll.tail.SetNextNode(node)
-	ll.tail = node
-	ll.incrementLength()
-
-	node.SetParentList(ll)
-}
-
-func (ll *LinkedList) incrementLength() {
-	ll.length++
-}
-
-func (ll *LinkedList) decrementLength() {
-	ll.length--
-}
-
-func (ll LinkedList) ForEach(callback func(node NodeManipulator), reverse bool) {
-	if reverse {
-		node := ll.tail
-
-		// Don't do anything if there are no nodes
-		if node == nil {
-			return
-		}
-
-		for {
-			callback(node)
-
-			if node.PrevNode() == nil {
-				break
+	for x, col := range w.matrix {
+		for y, val := range col {
+			if x == center && y == center {
+				continue
 			}
 
-			node = node.PrevNode()
-		}
-
-	} else {
-		node := ll.head
-
-		// Don't do anything if there are no nodes
-		if node == nil {
-			return
-		}
-
-		for {
-			callback(node)
-
-			if node.NextNode() == nil {
-				break
+			if val != nil {
+				dots = append(dots, val)
 			}
-
-			node = node.NextNode()
 		}
-
-	}
-}
-
-//* -------------------------
-//* NODE
-//* -------------------------
-
-type NodeManipulator interface {
-	SetParentList(list *LinkedList)
-	PrevNode() NodeManipulator
-	SetPrevNode(NodeManipulator)
-	NextNode() NodeManipulator
-	SetNextNode(NodeManipulator)
-	RemoveNode()
-}
-
-// Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
-// This makes any embedding struct implement the NodeManipulator
-type Node struct {
-	parentList *LinkedList
-	prev       NodeManipulator
-	next       NodeManipulator
-}
-
-func (n *Node) String() string {
-	// return fmt.Sprintf("Node{ parentList: %v, prev: %v, next: %v }", n.parentList, n.prev, n.next)
-	return fmt.Sprintf("Node{ prev: %v, next: %v }", n.prev, n.next)
-}
-
-func (n *Node) SetParentList(list *LinkedList) {
-	n.parentList = list
-}
-
-func (n *Node) PrevNode() NodeManipulator {
-	return n.prev
-}
-
-func (n *Node) SetPrevNode(node NodeManipulator) {
-	n.prev = node
-}
-
-func (n *Node) NextNode() NodeManipulator {
-	return n.next
-}
-
-func (n *Node) SetNextNode(node NodeManipulator) {
-	n.next = node
-}
-
-func (n *Node) RemoveNode() {
-	// There are always 2 refs to delete to garbage collect this node...
-	if n.prev == nil {
-		//* If this node is head AND tail
-		if n.next == nil {
-			// Both refs are from list (head, tail), since there are no other nodes
-			n.parentList.SetTail(nil)
-			n.parentList.SetHead(nil)
-
-			n.parentList.decrementLength()
-			return
-		}
-
-		//* If this node is ONLY head
-		// One ref from list (head) and one ref from next node (prev)
-		n.parentList.SetHead(n.next)
-		n.next.SetPrevNode(nil)
-
-		n.parentList.decrementLength()
-		return
 	}
 
-	//* If this node is ONLY tail
-	if n.next == nil {
-		// One ref from list (tail) and one ref from prev node (next)
-		n.parentList.SetTail(n.prev)
-		n.prev.SetNextNode(nil)
+	return dots
+}
 
-		n.parentList.decrementLength()
-		return
-	}
-
-	//* If this node is NEITHER head nor tail
-	// One ref from both prev (next) and next (prev)
-	n.prev.SetNextNode(n.next)
-	n.next.SetPrevNode(n.prev)
-
-	n.parentList.decrementLength()
+// Returns the grid coords of the center cell of the window
+func (w *Window) GridCoords() Point {
+	return w.center
 }
 
 //* -------------------------
 //* DOT
 //* -------------------------
-
 type Dot struct {
-	image *ebiten.Image
-	fill  color.Color
-	Node
-	Cell
+	image      *ebiten.Image
+	fill       color.Color
+	parentGrid *Grid
+	position   Point
 }
 
-func NewDot(coords Point, parentList *LinkedList, parentGrid *Grid) *Dot {
+// Set parentGrid to nil to not immediately add to a grid (in convolutions etc)
+func NewDot(coords Point, parentGrid *Grid) *Dot {
 	image := ebiten.NewImage(1, 1)
 	color, err := colorx.ParseHexColor("#adb5bd")
 	if err != nil {
@@ -478,44 +326,43 @@ func NewDot(coords Point, parentList *LinkedList, parentGrid *Grid) *Dot {
 	}
 
 	dot := &Dot{
-		image: image,
-		Cell:  Cell{position: coords},
-		fill:  color,
+		image:    image,
+		position: coords,
+		fill:     color,
 	}
 
-	// Remove existing dot at same location, if there is any
-	existingCell := parentGrid.Get(coords)
-	if existingCell != nil {
-		existingDot := existingCell.(*Dot)
-
-		existingDot.Remove()
+	if parentGrid != nil {
+		dot.SetParentGrid(parentGrid)
+		parentGrid.Set(coords, dot)
 	}
-
-	parentList.Add(dot)
-	parentGrid.Set(coords, dot)
 
 	return dot
 }
 
 // Pretty print the Dot position x & y coordinates
 func (d Dot) String() string {
-	var prevPos, nextPos *Point
-	if d.prev != nil {
-		prevPos = d.prev.(*Dot).Position()
-	}
-	if d.next != nil {
-		nextPos = d.next.(*Dot).Position()
-	}
-	return fmt.Sprintf("Dot{ x: %d, y: %d, prev: %v, next: %v }", d.Position().X, d.Position().Y, prevPos, nextPos)
+	return fmt.Sprintf("Dot{ x: %d, y: %d }", d.Position().X, d.Position().Y)
 }
 
-func (d *Dot) MoveCell(coords Point) error {
+// Grid will handle updating position of Dot if everything goes well
+func (d *Dot) MoveTo(coords Point) error {
 	return d.parentGrid.Move(d.position, coords, d)
 }
 
 func (d *Dot) Remove() {
-	d.RemoveNode()
-	d.RemoveCell()
+	d.parentGrid.Remove(d.position)
+}
+
+func (d *Dot) SetParentGrid(grid *Grid) {
+	d.parentGrid = grid
+}
+
+func (d *Dot) Position() Point {
+	return d.position
+}
+
+func (d *Dot) SetPosition(coords Point) {
+	d.position.SetCoords(coords.X, coords.Y)
 }
 
 func (d *Dot) Draw(screen *ebiten.Image) {
@@ -528,7 +375,6 @@ func (d *Dot) Draw(screen *ebiten.Image) {
 //* -------------------------
 //* POINT
 //* -------------------------
-// Abstract struct that is embedded into Dot (i.e. not used directly anywhere)
 type Point struct {
 	X, Y int
 }
@@ -545,6 +391,7 @@ func (p *Point) SetCoords(x, y int) {
 	p.X = x
 	p.Y = y
 }
+
 func (p Point) Coords() (int, int) {
 	return p.X, p.Y
 }
@@ -552,10 +399,10 @@ func (p Point) Coords() (int, int) {
 //* -------------------------
 //* SCREEN PIXEL MATRIX
 //* -------------------------
-type ScreenPixelMatrix [screenWidth][screenHeight]CellManipulator
+type ScreenPixelMatrix [screenWidth][screenHeight]*Dot
 
-func (spm *ScreenPixelMatrix) GetAllNonEmpty() []CellManipulator {
-	var cells []CellManipulator
+func (spm *ScreenPixelMatrix) GetAllNonEmpty() []*Dot {
+	var cells []*Dot
 
 	for _, col := range spm {
 		for _, cell := range col {
@@ -567,24 +414,4 @@ func (spm *ScreenPixelMatrix) GetAllNonEmpty() []CellManipulator {
 	}
 
 	return cells
-}
-
-func (spm *ScreenPixelMatrix) ExportToLinkedList(ll *LinkedList) *LinkedList {
-	// for _, col := range spm {
-	// 	for _, cell := range col {
-	// 		// cell should be pointer to CellManipulator value struct
-	// 		if cell != nil {
-	// 			ll.Add(cell.(NodeManipulator))
-	// 		}
-	// 	}
-	// }
-	for x := 0; x < len(spm); x++ {
-		for y := 0; y < len(spm[x]); y++ {
-			if spm[x][y] != nil {
-				ll.Add(spm[x][y].(NodeManipulator))
-			}
-		}
-	}
-
-	return ll
 }

@@ -26,3 +26,7 @@ func rightClick() *Point {
 func spaceKey() bool {
 	return inpututil.IsKeyJustPressed(ebiten.KeySpace)
 }
+
+func cKey() bool {
+	return inpututil.IsKeyJustPressed(ebiten.KeyC)
+}
