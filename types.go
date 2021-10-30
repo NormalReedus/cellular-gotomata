@@ -114,6 +114,9 @@ func (g *Grid) Convolve(windowSize int, callback func(*Window) CellManipulator) 
 			win := NewWindow(g, coords, windowSize)
 
 			cellVal := callback(win)
+			if cellVal != nil {
+				cellVal.SetPosition(coords)
+			}
 
 			tempGrid[x][y] = cellVal
 		}
@@ -268,12 +271,7 @@ func NewLinkedList() *LinkedList {
 func NewLinkedListFromMatrix(matrix *ScreenPixelMatrix) *LinkedList {
 	ll := &LinkedList{}
 
-	cells := matrix.GetAllNonEmpty()
-
-	for _, cell := range cells {
-		// Every CellManipulator-implementing struct should also implement NodeManipulator
-		ll.Add(cell.(NodeManipulator))
-	}
+	ll = matrix.ExportToLinkedList(ll)
 
 	return ll
 }
@@ -347,7 +345,6 @@ func (ll LinkedList) ForEach(callback func(node NodeManipulator), reverse bool) 
 		for {
 			callback(node)
 
-			// if node.prev == nil {
 			if node.PrevNode() == nil {
 				break
 			}
@@ -570,4 +567,24 @@ func (spm *ScreenPixelMatrix) GetAllNonEmpty() []CellManipulator {
 	}
 
 	return cells
+}
+
+func (spm *ScreenPixelMatrix) ExportToLinkedList(ll *LinkedList) *LinkedList {
+	// for _, col := range spm {
+	// 	for _, cell := range col {
+	// 		// cell should be pointer to CellManipulator value struct
+	// 		if cell != nil {
+	// 			ll.Add(cell.(NodeManipulator))
+	// 		}
+	// 	}
+	// }
+	for x := 0; x < len(spm); x++ {
+		for y := 0; y < len(spm[x]); y++ {
+			if spm[x][y] != nil {
+				ll.Add(spm[x][y].(NodeManipulator))
+			}
+		}
+	}
+
+	return ll
 }

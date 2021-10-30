@@ -11,11 +11,12 @@ import (
 	"github.com/icza/gox/imagex/colorx"
 )
 
-//TODO: Fix crash: runner-build.exe eats ALL ram when running with a dot placed a specific place, the window crashes, not the logic
+//TODO: Fix crash: crashes when game is unpaused and there are more than 5 dots. It eats all memory
+//! happens when converting a ScreenPixelMatrix to a LinkedList - presumably because of the many nested loops per second
+//? potential fix is to drop a linked list altogether and just loop through the grid for everything. This would also simplify everything else
 
 const (
 	screenWidth, screenHeight = 30, 30
-	numDots                   = 3
 	// Update is still ~60 (default) TPS to listen better for mouse events, this just applies to game logic
 	gameUpdateOnFrame = 20
 )
@@ -129,21 +130,23 @@ func inputUpdate() {
 
 // Slower TPS
 func gameUpdate() {
-	// PrintMemUsage()
 
 	if game.Paused() {
 		return
 	}
 
 	newGridState := game.grid.Convolve(3, func(win *Window) CellManipulator {
-		cell := win.Get(*NewPoint(0, 1))
+		cell := win.Get(*NewPoint(1, 1))
 		return cell
 	})
 
-	//TODO: fix that game does not draw the replaced state / the state is not replaced correctly?
 	newLinkedListState := NewLinkedListFromMatrix(&newGridState)
 	game.grid.ReplaceState(newGridState)
 	game.list = newLinkedListState
+
+	// fmt.Println(game.grid.numUsedCells)
+	// fmt.Println(game.list.length)
+	// PrintMemUsage()
 }
 
 func drawDots(screen *ebiten.Image) {
