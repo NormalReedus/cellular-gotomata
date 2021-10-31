@@ -8,6 +8,7 @@ import (
 	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/icza/gox/imagex/colorx"
 )
 
@@ -132,7 +133,11 @@ func (g *Grid) DecrementNumUsedCells() {
 }
 
 // Loop though all cells in grid and do an operation within a window (e.g. a kernel operation)
-func (g *Grid) Convolve(windowSize int, callback func(*Window) *Dot) {
+// func (g *Grid) Convolve(windowSize int, callback func(*Window) *Dot) {
+func (g *Grid) Convolve(conv Convolver) {
+	var windowSize int = conv.Size()
+	var callback func(*Window) *Dot = conv.ApplyKernel
+
 	tempMatrix := g.CreateTempMatrix()
 
 	for x := 0; x < len(g.data); x++ {
@@ -366,10 +371,7 @@ func (d *Dot) SetPosition(coords Point) {
 }
 
 func (d *Dot) Draw(screen *ebiten.Image) {
-	dotOpts := &ebiten.DrawImageOptions{}
-	dotOpts.GeoM.Translate(float64(d.Position().X), float64(d.Position().Y)) // position
-	d.image.Fill(d.fill)                                                     // color
-	screen.DrawImage(d.image, dotOpts)
+	ebitenutil.DrawRect(screen, float64(d.Position().X), float64(d.Position().Y), 1, 1, d.fill)
 }
 
 //* -------------------------

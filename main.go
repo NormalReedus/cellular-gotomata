@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	_ "image/png" // necessary for loading images
 	"log"
@@ -8,11 +9,14 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
+//TODO: figure out how to easily define a pixel size that everything multiplies by, so we can have cells, that are actually many pixels (which allows us to draw borders on every cell, so you can see the grid)
+
 const (
-	screenWidth, screenHeight = 30, 30
-	pixelSize                 = 30
+	screenWidth, screenHeight = 100, 100
+	pixelSize                 = 10
 )
 
 var (
@@ -70,31 +74,15 @@ func gameUpdate() {
 		return
 	}
 
-	game.grid.Convolve(3, func(win *Window) *Dot {
-		//* https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
-		dead := win.NumEmptyNeighbors()
-		alive := 8 - dead
+	gol := NewMyGameOfLife()
+	game.grid.Convolve(gol)
 
-		currentVal := win.Center()
-
-		// "Any live cell with two or three live neighbours survives."
-		if currentVal != nil && between(alive, 2, 3) {
-			return currentVal
-		}
-
-		// "Any dead cell with three live neighbours becomes a live cell."
-		if currentVal == nil && alive == 3 {
-			return NewDot(win.GridCoords(), nil) // parentGrid is set in grid.Convolve instead
-		}
-
-		// "All other live cells die in the next generation." / "...all other dead cells stay dead."
-		return nil
-	})
-
+	game.generation++
 }
 
 func drawBackground(screen *ebiten.Image, clr color.RGBA) {
 	screen.Fill(clr)
+	ebitenutil.DebugPrint(screen, fmt.Sprint(game.generation))
 }
 
 func drawDots(screen *ebiten.Image) {

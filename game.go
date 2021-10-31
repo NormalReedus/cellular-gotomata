@@ -9,7 +9,7 @@ import (
 
 const (
 	// Update is still ~60 (default) TPS to listen better for mouse events, this just applies to game logic
-	gameUpdateOnFrame = 20
+	gameUpdateOnFrame = 15
 )
 
 var (
@@ -21,6 +21,7 @@ var (
 type Game struct {
 	grid   *Grid
 	paused bool
+	generation int
 }
 
 func (g *Game) BgColor() color.RGBA {
@@ -69,5 +70,6 @@ func (g *Game) TogglePause() {
 }
 
 func (g *Game) Restart() {
+	g.generation = 0
 	g.grid.Clear()
 }
