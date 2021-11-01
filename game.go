@@ -9,22 +9,23 @@ import (
 
 const (
 	// Update is still ~60 (default) TPS to listen better for mouse events, this just applies to game logic
-	gameUpdateOnFrame = 15
+	GAME_TICK_FRAME_NUM = 15
 )
 
 var (
 	gameFrameCount   = 0
-	bgColor, _       = colorx.ParseHexColor("#343a40")
-	bgColorPaused, _ = colorx.ParseHexColor("#343a50")
+	bgColor, _       = colorx.ParseHexColor("#303040")
+	bgColorPaused, _ = colorx.ParseHexColor("#3f3f4a")
+	bgCellColor, _   = colorx.ParseHexColor("#022330")
 )
 
 type Game struct {
-	grid   *Grid
-	paused bool
+	grid       *Grid
+	paused     bool
 	generation int
 }
 
-func (g *Game) BgColor() color.RGBA {
+func (g Game) BgColor() color.RGBA {
 	if g.paused {
 		return bgColorPaused
 	}
@@ -32,11 +33,15 @@ func (g *Game) BgColor() color.RGBA {
 	return bgColor
 }
 
+func (g Game) BgCellColor() color.RGBA {
+	return bgCellColor
+}
+
 func (g *Game) Update() error {
 	inputUpdate()
 
 	// Only update game on every 20 frames
-	gameFrameCount = (gameFrameCount + 1) % gameUpdateOnFrame
+	gameFrameCount = (gameFrameCount + 1) % GAME_TICK_FRAME_NUM
 	if gameFrameCount == 0 {
 		gameUpdate()
 	}
@@ -47,10 +52,11 @@ func (g *Game) Update() error {
 func (g *Game) Draw(screen *ebiten.Image) {
 	drawBackground(screen, g.BgColor())
 	drawDots(screen)
+	drawOverlay(screen, g.BgCellColor())
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return screenWidth, screenHeight
+	return SCREEN_WIDTH, SCREEN_HEIGHT
 }
 
 func (g Game) Paused() bool {

@@ -8,7 +8,7 @@ import (
 func leftClick() *Point {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		x, y := ebiten.CursorPosition()
-		return &Point{X: x, Y: y}
+		return &Point{X: x / CELL_SIZE, Y: y / CELL_SIZE}
 	}
 
 	return nil
@@ -17,7 +17,7 @@ func leftClick() *Point {
 func rightClick() *Point {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		x, y := ebiten.CursorPosition()
-		return &Point{X: x, Y: y}
+		return &Point{X: x / CELL_SIZE, Y: y / CELL_SIZE}
 	}
 
 	return nil

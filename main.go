@@ -15,24 +15,26 @@ import (
 //TODO: figure out how to easily define a pixel size that everything multiplies by, so we can have cells, that are actually many pixels (which allows us to draw borders on every cell, so you can see the grid)
 
 const (
-	screenWidth, screenHeight = 30, 30
-	pixelSize                 = 30
+	GRID_WIDTH, GRID_HEIGHT     = 60, 60 //* BOTH MUST BE DIVISIBLE BY CELL_SIZE
+	CELL_SIZE                   = 20
+	SCREEN_WIDTH, SCREEN_HEIGHT = GRID_WIDTH * CELL_SIZE, GRID_HEIGHT * CELL_SIZE
 )
 
 var (
 	game *Game
 	gol  Convolver
+	// golMod Convolver
 )
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-	ebiten.SetWindowSize(screenWidth*pixelSize, screenHeight*pixelSize)
+	ebiten.SetWindowSize(SCREEN_WIDTH, SCREEN_HEIGHT)
 	ebiten.SetWindowTitle("Cellular Automata")
 }
 
 func setupInitialState() {
 	game = &Game{grid: NewGrid(), paused: true}
-	gol = NewMyGameOfLife()
+	gol = NewConwaysGameOfLife()
 }
 
 func main() {
@@ -76,6 +78,7 @@ func gameUpdate() {
 		return
 	}
 
+	// Doing more convolutions per tick can 'modify' an existing Game of Life to compose brand new games
 	game.grid.Convolve(gol)
 
 	game.generation++
@@ -83,11 +86,23 @@ func gameUpdate() {
 
 func drawBackground(screen *ebiten.Image, clr color.RGBA) {
 	screen.Fill(clr)
-	ebitenutil.DebugPrint(screen, fmt.Sprint(game.generation)) //TODO: Do this again when text can be smaller
 }
 
 func drawDots(screen *ebiten.Image) {
 	game.grid.ForEach(func(dot *Dot) {
 		dot.Draw(screen)
 	})
+}
+
+func drawOverlay(screen *ebiten.Image, bgCellColor color.RGBA) {
+
+	for x := 0; x < SCREEN_WIDTH; x += CELL_SIZE {
+		ebitenutil.DrawLine(screen, float64(x), 0, float64(x), float64(SCREEN_HEIGHT), bgCellColor)
+	}
+	for y := 0; y < SCREEN_HEIGHT; y += CELL_SIZE {
+		ebitenutil.DrawLine(screen, 0, float64(y), float64(SCREEN_HEIGHT), float64(y), bgCellColor)
+	}
+
+	// Print generation num
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Generation: %d", game.generation))
 }

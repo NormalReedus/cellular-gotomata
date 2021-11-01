@@ -371,7 +371,7 @@ func (d *Dot) SetPosition(coords Point) {
 }
 
 func (d *Dot) Draw(screen *ebiten.Image) {
-	ebitenutil.DrawRect(screen, float64(d.Position().X), float64(d.Position().Y), 1, 1, d.fill)
+	ebitenutil.DrawRect(screen, float64(d.Position().X*CELL_SIZE), float64(d.Position().Y*CELL_SIZE), CELL_SIZE, CELL_SIZE, d.fill)
 }
 
 //* -------------------------
@@ -401,14 +401,13 @@ func (p Point) Coords() (int, int) {
 //* -------------------------
 //* SCREEN PIXEL MATRIX
 //* -------------------------
-type ScreenPixelMatrix [screenWidth][screenHeight]*Dot
+type ScreenPixelMatrix [GRID_WIDTH][GRID_HEIGHT]*Dot
 
 func (spm *ScreenPixelMatrix) GetAllNonEmpty() []*Dot {
 	var cells []*Dot
 
 	for _, col := range spm {
 		for _, cell := range col {
-			// cell should be pointer to CellManipulator value struct
 			if cell != nil {
 				cells = append(cells, cell)
 			}
