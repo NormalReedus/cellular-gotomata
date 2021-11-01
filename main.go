@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 	_ "image/png" // necessary for loading images
 	"log"
@@ -9,14 +8,13 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 //TODO: figure out how to easily define a pixel size that everything multiplies by, so we can have cells, that are actually many pixels (which allows us to draw borders on every cell, so you can see the grid)
 
 const (
-	screenWidth, screenHeight = 100, 100
-	pixelSize                 = 10
+	screenWidth, screenHeight = 30, 30
+	pixelSize                 = 30
 )
 
 var (
@@ -82,7 +80,7 @@ func gameUpdate() {
 
 func drawBackground(screen *ebiten.Image, clr color.RGBA) {
 	screen.Fill(clr)
-	ebitenutil.DebugPrint(screen, fmt.Sprint(game.generation))
+	// ebitenutil.DebugPrint(screen, fmt.Sprint(game.generation)) //TODO: Do this again when text can be smaller
 }
 
 func drawDots(screen *ebiten.Image) {

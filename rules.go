@@ -50,8 +50,43 @@ type MyGameOfLife struct {
 
 func (mgol MyGameOfLife) ApplyKernel(win *Window) *Dot {
 	//* CUSTOM RULES HERE
+	diagonal := [4]*Dot{win.Get(*NewPoint(0, 0)), win.Get(*NewPoint(2, 0)), win.Get(*NewPoint(0, 2)), win.Get(*NewPoint(2, 2))}
+	contiguous := [4]*Dot{win.Get(*NewPoint(1, 0)), win.Get(*NewPoint(2, 1)), win.Get(*NewPoint(1, 2)), win.Get(*NewPoint(0, 1))}
 
-	return NewDot(win.GridCoords(), nil)
+	var diagonalAlive int
+	for _, dot := range diagonal {
+		if dot != nil {
+			diagonalAlive++
+		}
+	}
+
+	var contiguousAlive int
+	for _, dot := range contiguous {
+		if dot != nil {
+			contiguousAlive++
+		}
+	}
+
+	// If cell is alive
+	if win.Center() != nil {
+		if contiguousAlive == 4 {
+			return nil
+		}
+
+		if diagonalAlive >= 3 {
+			return nil
+		}
+
+		return win.Center()
+	} else {
+		// If cell is dead
+		if contiguousAlive >= 2 {
+			return NewDot(win.GridCoords(), nil)
+		}
+
+	}
+
+	return nil
 }
 
 func (mgol MyGameOfLife) Size() int {
@@ -59,5 +94,5 @@ func (mgol MyGameOfLife) Size() int {
 }
 
 func NewMyGameOfLife() *MyGameOfLife {
-	return &MyGameOfLife{Kernel{size: 5}} //* CUSTOM KERNEL SIZE HERE
+	return &MyGameOfLife{Kernel{size: 3}} //* CUSTOM KERNEL SIZE HERE
 }
