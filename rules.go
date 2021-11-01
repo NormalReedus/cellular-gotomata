@@ -39,7 +39,7 @@ func (gol ConwaysGameOfLife) Size() int {
 	return gol.size
 }
 
-func NewConwaysGameOfLife() *ConwaysGameOfLife {
+func NewConwaysGameOfLife() Convolver {
 	return &ConwaysGameOfLife{Kernel{size: 3}}
 }
 
@@ -93,6 +93,6 @@ func (mgol MyGameOfLife) Size() int {
 	return mgol.size
 }
 
-func NewMyGameOfLife() *MyGameOfLife {
+func NewMyGameOfLife() Convolver {
 	return &MyGameOfLife{Kernel{size: 3}} //* CUSTOM KERNEL SIZE HERE
 }
