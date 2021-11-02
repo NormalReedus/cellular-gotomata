@@ -102,6 +102,57 @@ func NewCustomGame1() Convolver {
 }
 
 //* -------------------------
+//* CUSTOM GAME 2
+//* -------------------------
+type CustomGame2 struct {
+	Kernel
+}
+
+func (CustomGame2) ApplyKernel(win *Window) *Dot {
+	diagonal := [4]*Dot{win.Get(*NewPoint(0, 0)), win.Get(*NewPoint(2, 0)), win.Get(*NewPoint(0, 2)), win.Get(*NewPoint(2, 2))}
+	contiguous := [4]*Dot{win.Get(*NewPoint(1, 0)), win.Get(*NewPoint(2, 1)), win.Get(*NewPoint(1, 2)), win.Get(*NewPoint(0, 1))}
+
+	var diagonalAlive int
+	for _, dot := range diagonal {
+		if dot != nil {
+			diagonalAlive++
+		}
+	}
+
+	var contiguousAlive int
+	for _, dot := range contiguous {
+		if dot != nil {
+			contiguousAlive++
+		}
+	}
+
+	// If cell is alive
+	if win.Center() != nil {
+		if diagonalAlive-contiguousAlive > 1 {
+			return nil
+		}
+
+		return win.Center() // Alive cell defaults to 'stay alive'
+
+	} else {
+		// If cell is dead
+		if contiguousAlive-diagonalAlive > 0 {
+			return NewDot(win.GridCoords(), nil)
+		}
+
+		return nil // Dead cell default to 'stay dead'
+	}
+}
+
+func (gol CustomGame2) Size() int {
+	return gol.size
+}
+
+func NewCustomGame2() Convolver {
+	return &CustomGame2{Kernel{size: 3}}
+}
+
+//* -------------------------
 //* CUSTOM GAME MOD 1
 //* -------------------------
 type CustomGameMod1 struct {

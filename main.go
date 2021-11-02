@@ -34,7 +34,7 @@ func init() {
 
 func setupInitialState() {
 	game = &Game{grid: NewGrid(), paused: true}
-	gol = NewConwaysGameOfLife()
+	gol = NewCustomGame2()
 }
 
 func main() {
